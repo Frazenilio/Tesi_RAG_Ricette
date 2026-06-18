@@ -8,16 +8,16 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
-from code.config import load_config
-from code.data import build_grouped_by_size, build_grouped_by_size_controlled, load_data
-from code.experiments import (
+from src.config import load_config
+from src.data import build_grouped_by_size, build_grouped_by_size_controlled, load_data
+from src.experiments import (
     prepare_generation_cases,
     run_test_llm_only,
     run_test_rag,
     run_test_rag_vs_llm,
 )
-from code.generation import create_model_runtime
-from code.ollama_utils import check_ollama_server
+from src.generation import create_model_runtime
+from src.ollama_utils import check_ollama_server
 
 RESULTS_DIR = Path("results")
 

@@ -10,6 +10,13 @@ from tqdm import tqdm
 nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
 
+# RECIPE_NAME_COL = "RecipeName"
+# DIRECTION_COL = "Text"
+
+## NEW: Replaced with the new dataset
+RECIPE_NAME_COL = "title"
+DIRECTION_COL = "directions"
+
 
 class ExperimentGroup(NamedTuple):
     """All data for one group of recipes sharing the same number of variants."""
@@ -43,7 +50,7 @@ def clean_recipe_variants(df: pd.DataFrame) -> pd.DataFrame:
         and _has_substantive_ingredients_payload(recipe_name, normalized)
         else None
         for recipe_name, ingredients in zip(
-            cleaned_df["RecipeName"], cleaned_df["Ingredients"], strict=True
+            cleaned_df[RECIPE_NAME_COL], cleaned_df["Ingredients"], strict=True
         )
         for normalized in [_normalize_ingredients_text(ingredients)]
     ]
@@ -72,7 +79,7 @@ def build_grouped_by_size_controlled(
     mirrors the controlled dataset used in the original thesis experiments
     (Table 4.4: 1800 = 100 × (6+5+4+3)).
     """
-    group_counts = df.groupby("RecipeName").size()
+    group_counts = df.groupby(RECIPE_NAME_COL).size()
     size_6_names = sorted(group_counts[group_counts == 6].index.tolist())
     if len(size_6_names) < n_per_size:
         raise ValueError(
@@ -89,14 +96,14 @@ def build_grouped_by_size_controlled(
 
         for recipe_name in base_recipes:
             recipe_df = (
-                df[df["RecipeName"] == recipe_name].sort_values("Code").head(size)
+                df[df[RECIPE_NAME_COL] == recipe_name].sort_values("Code").head(size)
             )
             code_id = "-".join(str(c) for c in recipe_df["Code"].tolist())
             correct_chunk_indices: list[int] = []
             for row in recipe_df.itertuples(index=False):
                 start = len(global_chunks)
                 correct_chunk_indices.append(start)
-                chunks = [row.Ingredients] + nltk.sent_tokenize(row.Text)
+                chunks = [row.Ingredients] + nltk.sent_tokenize(getattr(row, DIRECTION_COL))
                 global_chunks.extend(chunks)
 
             questions.append(
@@ -124,7 +131,7 @@ def build_grouped_by_size_controlled(
 def build_grouped_by_size(
     df: pd.DataFrame, encoding_model: SentenceTransformer, device: str
 ) -> list[ExperimentGroup]:
-    group_counts = df.groupby("RecipeName").size()
+    group_counts = df.groupby(RECIPE_NAME_COL).size()
     unique_sizes = sorted([int(s) for s in group_counts.unique()], reverse=True)
 
     grouped_by_size: list[ExperimentGroup] = []
@@ -134,16 +141,16 @@ def build_grouped_by_size(
         global_chunks: list[str] = []
 
         matching_recipes = group_counts[group_counts == size].index
-        group_df = df[df["RecipeName"].isin(matching_recipes)]
+        group_df = df[df[RECIPE_NAME_COL].isin(matching_recipes)]
 
-        for recipe_name, t_df in group_df.groupby("RecipeName"):
+        for recipe_name, t_df in group_df.groupby(RECIPE_NAME_COL):
             t_df = t_df.sort_values("Code")
             code_id = "-".join(str(c) for c in t_df["Code"].tolist())
             correct_chunk_indices: list[int] = []
             for row in t_df.itertuples(index=False):
                 start = len(global_chunks)
                 correct_chunk_indices.append(start)
-                chunks = [row.Ingredients] + nltk.sent_tokenize(row.Text)
+                chunks = [row.Ingredients] + nltk.sent_tokenize(getattr(row, DIRECTION_COL))
                 global_chunks.extend(chunks)
 
             questions.append(
