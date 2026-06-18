@@ -1,0 +1,66 @@
+[project]
+name = "rag-ricette"
+version = "0.1.0"
+description = "RAG pipeline for recipe ingredient retrieval using FAISS and local LLMs"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=1.6",
+    "faiss-cpu>=1.7",
+    "huggingface-hub>=0.31",
+    "matplotlib>=3.9",
+    "nltk>=3.9.4",
+    "numpy>=1.26",
+    "ollama>=0.2",
+    "pandas>=2.2",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "sentence-transformers>=3.0",
+    "torch",
+    "transformers>=4.51",
+    "tqdm",
+    "seaborn>=0.13.2",
+    "ipykernel>=7.3.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+
+[tool.uv.workspace]
+members = [
+    "original",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.3.0",
+    "pytest>=8.0",
+    "ruff>=0.15.9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+
+[tool.ruff]
+# Set line length
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # import sorting
+    "UP",  # pyupgrade
+    "B",   # bugbear
+#    "ANN",  # annotation checks
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["code"]
