@@ -65,13 +65,19 @@ def plot_results(
             pc.set_facecolor("tab:blue")
             pc.set_alpha(0.2)
 
-    axes[1, 0].boxplot(
-        data_to_plot,
-        labels=["Max IoU", "Mean IoU"],
-        patch_artist=True,
-        boxprops=dict(facecolor="white", color="tab:blue", alpha=0.8),
-        medianprops=dict(color="tab:red", linewidth=2),
-    )
+    import matplotlib
+    major_minor = tuple(map(int, matplotlib.__version__.split(".")[:2]))
+    boxplot_kwargs = {
+        "patch_artist": True,
+        "boxprops": dict(facecolor="white", color="tab:blue", alpha=0.8),
+        "medianprops": dict(color="tab:red", linewidth=2),
+    }
+    if major_minor >= (3, 9):
+        boxplot_kwargs["tick_labels"] = ["Max IoU", "Mean IoU"]
+    else:
+        boxplot_kwargs["labels"] = ["Max IoU", "Mean IoU"]
+
+    axes[1, 0].boxplot(data_to_plot, **boxplot_kwargs)
     axes[1, 0].set_title("Statistical Summary", fontsize=13, pad=10)
     axes[1, 0].set_ylim(-0.05, 1.05)
     axes[1, 0].grid(axis="y", alpha=0.3)

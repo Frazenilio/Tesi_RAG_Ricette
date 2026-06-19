@@ -16,6 +16,7 @@ nltk.download("punkt_tab", quiet=True)
 ## NEW: Replaced with the new dataset
 RECIPE_NAME_COL = "title"
 DIRECTION_COL = "directions"
+CODE_COL = "original_row"
 
 
 class ExperimentGroup(NamedTuple):
@@ -57,11 +58,21 @@ def clean_recipe_variants(df: pd.DataFrame) -> pd.DataFrame:
     return cleaned_df[cleaned_df["Ingredients"].notna()].reset_index(drop=True)
 
 
-def load_data(base_path: str, recipes_csv: str, ingredients_csv: str) -> pd.DataFrame:
+def load_data(
+    base_path: str,
+    recipes_csv: str,
+    ingredients_csv: str,
+    filter_recipes: list[str] = None,
+) -> pd.DataFrame:
     root = Path(base_path)
     df = pd.read_csv(root / recipes_csv)
     df_ingred = pd.read_csv(root / ingredients_csv)
     df["Ingredients"] = df_ingred["Ingredients"]
+
+    # Filter by specific recipe names if requested
+    if filter_recipes:
+        df = df[df[RECIPE_NAME_COL].isin(filter_recipes)]
+
     return clean_recipe_variants(df)
 
 
@@ -96,9 +107,9 @@ def build_grouped_by_size_controlled(
 
         for recipe_name in base_recipes:
             recipe_df = (
-                df[df[RECIPE_NAME_COL] == recipe_name].sort_values("Code").head(size)
+                df[df[RECIPE_NAME_COL] == recipe_name].sort_values(CODE_COL).head(size)
             )
-            code_id = "-".join(str(c) for c in recipe_df["Code"].tolist())
+            code_id = "-".join(str(c) for c in recipe_df[CODE_COL].tolist())
             correct_chunk_indices: list[int] = []
             for row in recipe_df.itertuples(index=False):
                 start = len(global_chunks)
@@ -144,8 +155,8 @@ def build_grouped_by_size(
         group_df = df[df[RECIPE_NAME_COL].isin(matching_recipes)]
 
         for recipe_name, t_df in group_df.groupby(RECIPE_NAME_COL):
-            t_df = t_df.sort_values("Code")
-            code_id = "-".join(str(c) for c in t_df["Code"].tolist())
+            t_df = t_df.sort_values(CODE_COL)
+            code_id = "-".join(str(c) for c in t_df[CODE_COL].tolist())
             correct_chunk_indices: list[int] = []
             for row in t_df.itertuples(index=False):
                 start = len(global_chunks)

@@ -47,6 +47,7 @@ class Config:
     controlled_dataset: bool
     n_per_size: int
     experiments: list[str]
+    filter_recipes: list[str] = field(default_factory=list)
     language_model_types: dict[str, str] = field(default_factory=dict)
 
 
@@ -146,6 +147,7 @@ def load_config(path: Path = _DEFAULT_CONFIG_PATH) -> Config:
         base_path=raw["data"]["base_path"],
         recipes_csv=raw["data"]["recipes_csv"],
         ingredients_csv=raw["data"]["ingredients_csv"],
+        filter_recipes=raw["data"].get("filter_recipes", []),
         encoding_model=raw["models"]["encoding"],
         language_models=language_models,
         language_model_types=language_model_types,

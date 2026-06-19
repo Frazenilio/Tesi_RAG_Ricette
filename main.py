@@ -160,7 +160,9 @@ def main():
 
     encoding_model = SentenceTransformer(cfg.encoding_model, device=cfg.device)
 
-    df = load_data(cfg.base_path, cfg.recipes_csv, cfg.ingredients_csv)
+    df = load_data(
+        cfg.base_path, cfg.recipes_csv, cfg.ingredients_csv, cfg.filter_recipes
+    )
     if cfg.controlled_dataset:
         groups = build_grouped_by_size_controlled(
             df, encoding_model, cfg.device, cfg.n_per_size
@@ -170,10 +172,11 @@ def main():
 
     timestamp = datetime.now().isoformat(timespec="seconds")
     ts_slug = timestamp.replace(":", "-")
-    RESULTS_DIR.mkdir(exist_ok=True)
+    run_results_dir = RESULTS_DIR / ts_slug
+    run_results_dir.mkdir(parents=True, exist_ok=True)
 
     if args.save_data:
-        data_path = RESULTS_DIR / "data.pkl"
+        data_path = run_results_dir / "data.pkl"
         with open(data_path, "wb") as f:
             pickle.dump(groups, f)
         print(f"Data saved to {data_path}")
@@ -192,8 +195,8 @@ def main():
             timeout=cfg.llm_timeout,
             ollama_available=ollama_available,
         ) as model_runtime:
-            model_dir = RESULTS_DIR / model_runtime.slug
-            model_dir.mkdir(exist_ok=True)
+            model_dir = run_results_dir / model_runtime.slug
+            model_dir.mkdir(parents=True, exist_ok=True)
             model_results = run_selected_experiments(
                 groups, encoding_model, cfg, model_runtime, model_dir, ts_slug
             )
@@ -202,7 +205,7 @@ def main():
                 "results": model_results,
             }
 
-    out_path = RESULTS_DIR / f"summary_{ts_slug}.json"
+    out_path = run_results_dir / f"summary_{ts_slug}.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nGlobal summary saved to {out_path}")

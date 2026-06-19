@@ -6,6 +6,10 @@ data:
   # ingredients_csv: "cleaned_ingredients.csv"
   ## NEW: Using my cleaned ingredients
   ingredients_csv: "cleaned_filtered_ingredients.csv"
+  # Optional: specify a list of recipe names to test. If empty, tests all recipes in the dataset.
+  # filter_recipes:
+  #   - "Carbonara"
+  #   - "Spanish Rice"
 
 models:
   encoding: "BAAI/bge-large-en-v1.5"
