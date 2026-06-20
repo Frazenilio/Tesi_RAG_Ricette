@@ -35,8 +35,10 @@ def clean_single_ingredient(ing: str) -> str:
         
     # 1. Handle "n X (Y g)" format (e.g., "2 eggs, beaten (100.0 g)")
     # Group 1: quantity (optional), Group 2: Name & prep, Group 3: Gram quantity
+    # Note: Fraction pattern (\d+/\d+) must precede float/int (\d+(?:\.\d+)?) in alternation
+    # to prevent matching only the numerator digit and leaving the slash in Group 2.
     m_unit = re.match(
-        r'^(\d+(?:\.\d+)?|\d+/\d+)?\s*(.*?)\s*\(\s*(\d+(?:\.\d+)?\s*g)\s*\)\s*$', 
+        r'^(\d+/\d+|\d+(?:\.\d+)?)?\s*(.*?)\s*\(\s*(\d+(?:\.\d+)?\s*g)\s*\)\s*$', 
         ing, 
         re.IGNORECASE
     )
@@ -98,6 +100,7 @@ def clean_single_ingredient(ing: str) -> str:
     name = re.sub(r'\s+(?:and|or|with|of|plus|about|at|in|for|from)\s*$', '', name, flags=re.IGNORECASE)
 
     # 10. Final formatting and cleanup
+    name = re.sub(r'\s*/\s*', ' ', name) # Replace slashes with spaces to clean up any leftover fraction slashes
     name = re.sub(r'\s+', ' ', name)  # Replace multiple spaces with a single space
     name = re.sub(r'-\s*$', '', name) # Remove trailing hyphens
     name = re.sub(r'^\s*-', '', name) # Remove leading hyphens

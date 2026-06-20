@@ -47,6 +47,7 @@ class Config:
     controlled_dataset: bool
     n_per_size: int
     experiments: list[str]
+    delete_after_run: bool = False
     filter_recipes: list[str] = field(default_factory=list)
     language_model_types: dict[str, str] = field(default_factory=dict)
 
@@ -159,6 +160,7 @@ def load_config(path: Path = _DEFAULT_CONFIG_PATH) -> Config:
         llm_timeout=raw["models"].get("llm_timeout", 120),
         llm_retries=raw["models"].get("llm_retries", 3),
         llm_keep_alive=raw["models"].get("llm_keep_alive", "5m"),
+        delete_after_run=raw["models"].get("delete_after_run", False),
         nlist=raw["retrieval"]["nlist"],
         nprobe=raw["retrieval"]["nprobe"],
         controlled_dataset=raw["retrieval"].get("controlled_dataset", False),

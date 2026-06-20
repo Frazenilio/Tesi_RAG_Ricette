@@ -9,13 +9,19 @@ from pathlib import Path
 from sentence_transformers import SentenceTransformer
 
 from src.config import load_config
-from src.data import build_grouped_by_size, build_grouped_by_size_controlled, load_data
+from src.data import (
+    ExperimentGroup,
+    build_grouped_by_size,
+    build_grouped_by_size_controlled,
+    load_data,
+)
 from src.experiments import (
     prepare_generation_cases,
     run_test_llm_only,
     run_test_rag,
     run_test_rag_vs_llm,
 )
+from src.plot import plot_divergence_results, plot_results
 from src.generation import create_model_runtime
 from src.ollama_utils import check_ollama_server
 
@@ -62,13 +68,10 @@ def run_selected_experiments(
         "rag_vs_llm": run_test_rag_vs_llm,
     }
     model_results = {}
-    plot_dirs = {}
+
+    # Ensure experiment subdirectories exist first
     for experiment in cfg.experiments:
-        exp_dir = model_dir / experiment
-        exp_dir.mkdir(exist_ok=True)
-        plot_dir = exp_dir / f"plots_{ts_slug}"
-        plot_dir.mkdir(exist_ok=True)
-        plot_dirs[experiment] = plot_dir
+        (model_dir / experiment).mkdir(parents=True, exist_ok=True)
 
     retrieval_trace_file = None
     retrieval_trace_path = None
@@ -78,12 +81,16 @@ def run_selected_experiments(
 
     generated_cases = prepare_generation_cases(
         groups,
+        encoding_model,
         cfg,
         model_runtime,
         include_rag="rag" in cfg.experiments or "rag_vs_llm" in cfg.experiments,
         include_llm="llm_only" in cfg.experiments or "rag_vs_llm" in cfg.experiments,
         trace_path=retrieval_trace_path,
     )
+
+    # Get the unique recipe names across all generated cases
+    recipe_names = sorted(list({case.recipe_name for cases in generated_cases.values() for case in cases}))
 
     methodology = {
         "rag_context_source": "oracle_dataset_chunks",
@@ -92,29 +99,166 @@ def run_selected_experiments(
         "reuses_responses_across_selected_experiments": len(cfg.experiments) > 1,
     }
 
+    # Decide whether to divide by recipe based on whether specific recipes are filtered in the config
+    divide_by_recipe = bool(cfg.filter_recipes)
+
     for experiment in cfg.experiments:
         exp_dir = model_dir / experiment
-        if experiment == "rag":
-            model_results[experiment] = runners[experiment](
-                groups,
-                encoding_model,
-                cfg,
-                model_runtime,
-                plot_dir=plot_dirs[experiment],
-                trace_path=retrieval_trace_path,
-                generated_cases=generated_cases,
-            )
-        else:
-            model_results[experiment] = runners[experiment](
-                groups,
-                encoding_model,
-                cfg,
-                model_runtime,
-                plot_dir=plot_dirs[experiment],
-                generated_cases=generated_cases,
-            )
+        model_results[experiment] = {}
 
-        exp_results = model_results[experiment]
+        if not divide_by_recipe:
+            # LEGACY / BEFORE: run globally on all recipes combined
+            plot_dir = exp_dir / f"plots_{ts_slug}"
+            plot_dir.mkdir(parents=True, exist_ok=True)
+
+            if experiment == "rag":
+                exp_results = runners[experiment](
+                    groups,
+                    encoding_model,
+                    cfg,
+                    model_runtime,
+                    plot_dir=plot_dir,
+                    trace_path=retrieval_trace_path,
+                    generated_cases=generated_cases,
+                )
+            else:
+                exp_results = runners[experiment](
+                    groups,
+                    encoding_model,
+                    cfg,
+                    model_runtime,
+                    plot_dir=plot_dir,
+                    generated_cases=generated_cases,
+                )
+
+            model_results[experiment] = exp_results
+
+        else:
+            # OPTION A: Divide by recipe
+            recipe_names = sorted(list({case.recipe_name for cases in generated_cases.values() for case in cases}))
+            aggregated_exp_results = {}
+
+            for recipe_name in recipe_names:
+                # Create a safe directory name for the recipe
+                recipe_name_safe = recipe_name
+                for c in '<>:"/\\|?*':
+                    recipe_name_safe = recipe_name_safe.replace(c, "_")
+                recipe_dir = exp_dir / recipe_name_safe
+                recipe_dir.mkdir(parents=True, exist_ok=True)
+
+                # Filter generated cases for this recipe
+                recipe_gen_cases = {}
+                for size, cases in generated_cases.items():
+                    filtered_cases = [c for c in cases if c.recipe_name == recipe_name]
+                    if filtered_cases:
+                        recipe_gen_cases[size] = filtered_cases
+
+                if not recipe_gen_cases:
+                    continue
+
+                # Filter groups for this recipe
+                recipe_groups = []
+                for g in groups:
+                    filtered_qs = [q for q in g.questions if q[0] == recipe_name]
+                    if filtered_qs:
+                        recipe_groups.append(
+                            ExperimentGroup(
+                                size=g.size,
+                                chunks=g.chunks,
+                                embeddings=g.embeddings,
+                                questions=filtered_qs,
+                            )
+                        )
+
+                if experiment == "rag":
+                    recipe_results = runners[experiment](
+                        recipe_groups,
+                        encoding_model,
+                        cfg,
+                        model_runtime,
+                        plot_dir=recipe_dir,
+                        trace_path=None,
+                        generated_cases=recipe_gen_cases,
+                    )
+                else:
+                    recipe_results = runners[experiment](
+                        recipe_groups,
+                        encoding_model,
+                        cfg,
+                        model_runtime,
+                        plot_dir=recipe_dir,
+                        generated_cases=recipe_gen_cases,
+                    )
+
+                # Save recipe-specific results json
+                recipe_payload = {
+                    "model": model_runtime.results_label,
+                    "backend": model_runtime.backend,
+                    "experiment": experiment,
+                    "timestamp": ts_slug,
+                    "recipe_name": recipe_name,
+                    "model_spec": build_public_model_spec(model_runtime.spec),
+                    "config": build_public_config(cfg),
+                    "generation_methodology": methodology,
+                    "results": recipe_results,
+                }
+                recipe_out_path = recipe_dir / f"results_{ts_slug}.json"
+                with open(recipe_out_path, "w") as f:
+                    json.dump(recipe_payload, f, indent=2)
+
+                # Aggregate for the global experiment-level output
+                for size, metrics in recipe_results.items():
+                    if size not in aggregated_exp_results:
+                        aggregated_exp_results[size] = {}
+                    
+                    for key, val in metrics.items():
+                        if isinstance(val, list):
+                            if key not in aggregated_exp_results[size]:
+                                aggregated_exp_results[size][key] = []
+                            aggregated_exp_results[size][key].extend(val)
+
+            # Recompute percentages for the aggregated results at experiment level
+            for size, data in aggregated_exp_results.items():
+                if "maxs" in data:
+                    maxs = data["maxs"]
+                    data["pct_perfect"] = len([v for v in maxs if v == 1.0]) / len(maxs) if maxs else 0.0
+                    data["pct_near"] = len([v for v in maxs if v >= 0.95]) / len(maxs) if maxs else 0.0
+                if "scores" in data:
+                    scores = data["scores"]
+                    data["pct_perfect"] = len([v for v in scores if v == 1.0]) / len(scores) if scores else 0.0
+                    data["pct_near"] = len([v for v in scores if v >= 0.95]) / len(scores) if scores else 0.0
+
+            # Generate overall/aggregated plots (as done in the original version)
+            plot_dir = exp_dir / f"plots_{ts_slug}"
+            plot_dir.mkdir(parents=True, exist_ok=True)
+            for size, data in aggregated_exp_results.items():
+                save_path = plot_dir / f"size_{size}.png"
+                if experiment == "rag":
+                    plot_results(
+                        data["maxs"],
+                        data["means"],
+                        data["stddevs"],
+                        title=f"Test 1 — RAG | varianti={size}",
+                        save_path=save_path,
+                    )
+                elif experiment == "llm_only":
+                    plot_results(
+                        data["maxs"],
+                        data["means"],
+                        data["stddevs"],
+                        title=f"Test 2 — LLM only | varianti={size}",
+                        save_path=save_path,
+                    )
+                elif experiment == "rag_vs_llm":
+                    plot_divergence_results(
+                        data["scores"],
+                        title=f"Test 3 — RAG vs LLM | varianti={size}",
+                        save_path=save_path,
+                    )
+
+            model_results[experiment] = aggregated_exp_results
+
+        # Save global experiment results file (representing all recipes aggregated)
         payload = {
             "model": model_runtime.results_label,
             "backend": model_runtime.backend,
@@ -123,14 +267,14 @@ def run_selected_experiments(
             "model_spec": build_public_model_spec(model_runtime.spec),
             "config": build_public_config(cfg),
             "generation_methodology": methodology,
-            "results": exp_results,
+            "results": aggregated_exp_results,
         }
         if experiment == "rag" and retrieval_trace_file is not None:
             payload["retrieval_trace_file"] = retrieval_trace_file
         exp_out_path = exp_dir / f"results_{ts_slug}.json"
         with open(exp_out_path, "w") as f:
             json.dump(payload, f, indent=2)
-        print(f"Experiment '{experiment}' results saved to {exp_out_path}")
+        print(f"Experiment '{experiment}' aggregated results saved to {exp_out_path}")
 
     return model_results
 
@@ -194,6 +338,7 @@ def main():
             device=cfg.device,
             timeout=cfg.llm_timeout,
             ollama_available=ollama_available,
+            delete_after_run=cfg.delete_after_run,
         ) as model_runtime:
             model_dir = run_results_dir / model_runtime.slug
             model_dir.mkdir(parents=True, exist_ok=True)

@@ -64,10 +64,11 @@ class ModelRuntime:
 
 
 class OllamaModelRuntime(ModelRuntime):
-    def __init__(self, spec: ModelSpec, *, timeout: int):
+    def __init__(self, spec: ModelSpec, *, timeout: int, delete_after_run: bool = False):
         super().__init__(spec, backend="ollama")
         self.model_name = spec.ollama_model
         self.client = Client(timeout=timeout)
+        self.delete_after_run = delete_after_run
         self.was_pulled = ensure_model_available(self.model_name)
 
     def query(
@@ -105,7 +106,7 @@ class OllamaModelRuntime(ModelRuntime):
 
     def close(self) -> None:
         unload_model(self.model_name)
-        if self.was_pulled:
+        if self.delete_after_run and self.was_pulled:
             delete_model(self.model_name)
 
 
@@ -115,13 +116,14 @@ def create_model_runtime(
     device: str,
     timeout: int,
     ollama_available: bool,
+    delete_after_run: bool = False,
 ) -> ModelRuntime:
     del device
     if not ollama_available:
         raise ModelBackendError(
             f"Unable to initialize '{spec.visible_label}'. Ollama server unavailable."
         )
-    return OllamaModelRuntime(spec, timeout=timeout)
+    return OllamaModelRuntime(spec, timeout=timeout, delete_after_run=delete_after_run)
 
 
 def query_llm(

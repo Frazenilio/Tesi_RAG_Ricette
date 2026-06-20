@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -65,7 +65,6 @@ def plot_results(
             pc.set_facecolor("tab:blue")
             pc.set_alpha(0.2)
 
-    import matplotlib
     major_minor = tuple(map(int, matplotlib.__version__.split(".")[:2]))
     boxplot_kwargs = {
         "patch_artist": True,

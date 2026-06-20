@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
+import numpy as np
 
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
@@ -11,7 +12,7 @@ from .generation import query_llm
 from .metrics import compute_iou_stats, sentence_iou
 from .plot import plot_divergence_results, plot_results
 from .prompts import SYSTEM_PROMPT_PLAIN, SYSTEM_PROMPT_RAG
-from .retrieval import retrieve_oracle
+from .retrieval import build_faiss_index, retrieve, retrieve_oracle
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class GeneratedCase:
 
 def prepare_generation_cases(
     grouped_by_size: list,
+    encoding_model: SentenceTransformer,
     cfg: Config,
     model_runtime,
     *,
@@ -45,9 +47,18 @@ def prepare_generation_cases(
     call_counter = count(1)
     trace_entries = [] if trace_path is not None else None
 
-    for size, global_chunks, _embedded_chunks, questions in tqdm(
+    for size, global_chunks, embedded_chunks, questions in tqdm(
         grouped_by_size, desc="Generation Cases"
     ):
+        # Build FAISS index for this group if we need to do RAG
+        index = None
+        if include_rag and len(global_chunks) > 0:
+            nlist = min(cfg.nlist, len(global_chunks))
+            if nlist < 1:
+                nlist = 1
+            embedded_chunks_f32 = np.array(embedded_chunks).astype(np.float32)
+            index = build_faiss_index(embedded_chunks_f32, nlist=nlist, nprobe=cfg.nprobe)
+
         size_cases: list[GeneratedCase] = []
         for qa_index, (
             recipe_name,
@@ -55,15 +66,30 @@ def prepare_generation_cases(
             query_text,
             correct_indices,
         ) in enumerate(tqdm(questions, desc=f"Size {size}", leave=False)):
-            correct_chunks, context = retrieve_oracle(global_chunks, correct_indices)
-            context_indices = [int(index_value) for index_value in correct_indices]
-            context_chunks = [
-                global_chunks[index_value] for index_value in context_indices
-            ]
+            correct_chunks, _ = retrieve_oracle(global_chunks, correct_indices)
+            
             response_rag = None
             response_llm = None
 
             if include_rag:
+                if index is not None:
+                    # Use FAISS to retrieve the context, setting k = len(correct_indices)
+                    retrieved_ids, retrieved_chunks, context = retrieve(
+                        query=query_text,
+                        k=len(correct_indices),
+                        index=index,
+                        global_chunks=global_chunks,
+                        correct_indices=correct_indices,
+                        encoding_model=encoding_model,
+                        device=cfg.device
+                    )
+                    context_indices = [int(i) for i in retrieved_ids]
+                    context_chunks = [global_chunks[i] for i in context_indices]
+                else:
+                    context_indices = []
+                    context_chunks = []
+                    context = ""
+
                 response_rag = query_llm(
                     SYSTEM_PROMPT_RAG.format(context=context),
                     query_text,
@@ -77,6 +103,12 @@ def prepare_generation_cases(
                     retries=cfg.llm_retries,
                     keep_alive=cfg.llm_keep_alive,
                 )
+            else:
+                context_indices = [int(index_value) for index_value in correct_indices]
+                context_chunks = [
+                    global_chunks[index_value] for index_value in context_indices
+                ]
+                context = ""
 
             if include_llm:
                 response_llm = query_llm(
@@ -120,7 +152,7 @@ def prepare_generation_cases(
                         "retrieved_indices": context_indices,
                         "retrieved_chunks": context_chunks,
                         "retrieved_context": context,
-                        "context_source": "oracle_dataset_chunks",
+                        "context_source": "faiss_vector_index" if include_rag else "oracle_dataset_chunks",
                     }
                 )
 
@@ -136,7 +168,7 @@ def prepare_generation_cases(
                         model_runtime, "results_label", model_runtime.visible_label
                     ),
                     "experiment": "rag",
-                    "context_source": "oracle_dataset_chunks",
+                    "context_source": "faiss_vector_index",
                     "reference_chunks_source": "dataset_correct_indices",
                     "entries": trace_entries,
                 },
@@ -149,6 +181,7 @@ def prepare_generation_cases(
 
 def _load_generation_cases(
     grouped_by_size: list,
+    encoding_model: SentenceTransformer,
     cfg: Config,
     model_runtime,
     *,
@@ -161,6 +194,7 @@ def _load_generation_cases(
         return generated_cases
     return prepare_generation_cases(
         grouped_by_size,
+        encoding_model,
         cfg,
         model_runtime,
         include_rag=include_rag,
@@ -189,10 +223,10 @@ def run_test_rag(
     print(
         f"\n=== Test 1: RAG (with context) | Model: {model_runtime.visible_label} ==="
     )
-    del encoding_model
     results = {}
     cases_by_size = _load_generation_cases(
         grouped_by_size,
+        encoding_model,
         cfg,
         model_runtime,
         include_rag=True,
@@ -257,10 +291,10 @@ def run_test_llm_only(
     print(
         f"\n=== Test 2: LLM only (no context) | Model: {model_runtime.visible_label} ==="
     )
-    del encoding_model
     results = {}
     cases_by_size = _load_generation_cases(
         grouped_by_size,
+        encoding_model,
         cfg,
         model_runtime,
         include_rag=False,
@@ -324,10 +358,10 @@ def run_test_rag_vs_llm(
     print(
         f"\n=== Test 3: RAG vs LLM divergence | Model: {model_runtime.visible_label} ==="
     )
-    del encoding_model
     results = {}
     cases_by_size = _load_generation_cases(
         grouped_by_size,
+        encoding_model,
         cfg,
         model_runtime,
         include_rag=True,

@@ -7,9 +7,10 @@ data:
   ## NEW: Using my cleaned ingredients
   ingredients_csv: "cleaned_filtered_ingredients.csv"
   # Optional: specify a list of recipe names to test. If empty, tests all recipes in the dataset.
-  # filter_recipes:
-  #   - "Carbonara"
-  #   - "Spanish Rice"
+  filter_recipes:
+    - "Carbonara"
+    - "Pistachio Cake"
+    - "Baked Macaroni and Cheese"
 
 models:
   encoding: "BAAI/bge-large-en-v1.5"
@@ -43,6 +44,8 @@ models:
   llm_timeout: 120
   llm_retries: 3
   llm_keep_alive: "5m"
+  # Set to true to delete pulled Ollama models from local storage after running
+  delete_after_run: false
 
 retrieval:
   nlist: 30

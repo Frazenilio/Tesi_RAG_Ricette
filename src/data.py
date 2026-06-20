@@ -114,8 +114,12 @@ def build_grouped_by_size_controlled(
             for row in recipe_df.itertuples(index=False):
                 start = len(global_chunks)
                 correct_chunk_indices.append(start)
-                chunks = [row.Ingredients] + nltk.sent_tokenize(getattr(row, DIRECTION_COL))
-                global_chunks.extend(chunks)
+                ## NOTE Here to change the chunks, what they contain
+                # chunks = [row.Ingredients] + nltk.sent_tokenize(getattr(row, DIRECTION_COL))
+                chunk_ing = row.Ingredients
+                chunk_dir = getattr(row, DIRECTION_COL)
+                global_chunks.append(chunk_ing)
+                global_chunks.append(chunk_dir)
 
             questions.append(
                 (

@@ -7,13 +7,22 @@ def build_faiss_index(
     embedded_chunks: np.ndarray, nlist: int, nprobe: int
 ) -> faiss.Index:
     dim = embedded_chunks.shape[-1]
+    corpus_embeddings = embedded_chunks.astype(np.float32)
+    
+    # If the dataset is small, IVFFlat clustering is not needed and triggers training warnings.
+    # Fall back to an exact Flat index (IndexFlatIP) for perfect retrieval accuracy.
+    if len(corpus_embeddings) < nlist * 39 or nlist <= 1:
+        index = faiss.IndexFlatIP(dim)
+        index.add(corpus_embeddings)
+        print(f"Total vectors in Flat index (exact search): {index.ntotal}")
+        return index
+
     quantizer = faiss.IndexFlatL2(dim)
     index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
-    corpus_embeddings = embedded_chunks.astype(np.float32)
     index.train(corpus_embeddings)
     index.add(corpus_embeddings)
     index.nprobe = nprobe
-    print(f"Total vectors in index: {index.ntotal}")
+    print(f"Total vectors in IVF index: {index.ntotal}")
     return index
 
 
