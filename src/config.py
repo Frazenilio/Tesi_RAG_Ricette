@@ -32,6 +32,7 @@ class Config:
     base_path: str
     recipes_csv: str
     ingredients_csv: str
+    directions_csv: str
     encoding_model: str
     language_models: list[ModelSpec]
     device: str
@@ -47,6 +48,7 @@ class Config:
     controlled_dataset: bool
     n_per_size: int
     experiments: list[str]
+    strategies: list[str]
     delete_after_run: bool = False
     filter_recipes: list[str] = field(default_factory=list)
     language_model_types: dict[str, str] = field(default_factory=dict)
@@ -148,6 +150,7 @@ def load_config(path: Path = _DEFAULT_CONFIG_PATH) -> Config:
         base_path=raw["data"]["base_path"],
         recipes_csv=raw["data"]["recipes_csv"],
         ingredients_csv=raw["data"]["ingredients_csv"],
+        directions_csv=raw["data"]["directions_csv"],
         filter_recipes=raw["data"].get("filter_recipes", []),
         encoding_model=raw["models"]["encoding"],
         language_models=language_models,
@@ -166,4 +169,5 @@ def load_config(path: Path = _DEFAULT_CONFIG_PATH) -> Config:
         controlled_dataset=raw["retrieval"].get("controlled_dataset", False),
         n_per_size=raw["retrieval"].get("n_per_size", 100),
         experiments=experiments,
+        strategies=raw["retrieval"].get("strategies", ["mixed"]),
     )

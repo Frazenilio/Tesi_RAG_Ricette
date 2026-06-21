@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -202,3 +203,68 @@ def plot_divergence_results(
     print(f"% identical responses (IoU==1.0) => {pct_identical:.2%}")
     print(f"% near-identical (IoU>=0.95)     => {pct_near:.2%}")
     print(f"Avg divergence IoU               => {avg_div:.3f}")
+
+
+def plot_strategy_comparison(
+    strategy_metrics: dict[str, dict[Any, float]],  # strategy -> {key -> average_iou}
+    title: str = "",
+    save_path: Path | None = None,
+    x_labels: dict[Any, str] = None,
+    recipe_to_size: dict[str, int] = None,
+) -> None:
+    """Plot comparing the average IoU of different database strategies across variants sizes."""
+    try:
+        plt.style.use("seaborn-v0_8-muted")
+    except (OSError, ValueError):
+        plt.style.use("ggplot")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Determine unique sorted keys across all strategies
+    all_keys = set()
+    for data in strategy_metrics.values():
+        all_keys.update(data.keys())
+
+    # Check if keys are numeric
+    are_keys_numeric = all(isinstance(k, (int, float)) for k in all_keys)
+    if are_keys_numeric:
+        sorted_keys = sorted(list(all_keys))
+        x_coords = sorted_keys
+    else:
+        if recipe_to_size:
+            sorted_keys = sorted(list(all_keys), key=lambda r: (recipe_to_size.get(r, 0), r))
+        else:
+            sorted_keys = sorted(list(all_keys))
+        x_coords = list(range(len(sorted_keys)))
+
+    # Plot each strategy as a line
+    for strategy_name, data in strategy_metrics.items():
+        # Get average IoUs for sorted keys (if missing, use None or float('nan'))
+        avg_ious = [data.get(k, float('nan')) for k in sorted_keys]
+        ax.plot(x_coords, avg_ious, marker='o', linewidth=2.5, label=strategy_name)
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.set_ylabel("Average IoU Score", fontsize=12)
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xticks(x_coords)
+    if x_labels:
+        labels = [x_labels.get(k, str(k)) for k in sorted_keys]
+        ax.set_xticklabels(labels, rotation=15, ha="right")
+        ax.set_xlabel("Recipes", fontsize=12)
+    elif not are_keys_numeric:
+        ax.set_xticklabels(sorted_keys, rotation=15, ha="right")
+        ax.set_xlabel("Recipes", fontsize=12)
+    else:
+        ax.set_xlabel("Number of Recipe Variants (Size k)", fontsize=12)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(fontsize=11, loc="lower left", frameon=True)
+
+    plt.tight_layout()
+    if save_path is not None:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150)
+        print(f"Comparison plot saved to {save_path}")
+    else:
+        plt.show()
+
+    plt.close(fig)

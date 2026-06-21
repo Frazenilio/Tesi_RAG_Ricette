@@ -1,5 +1,5 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 import nltk
 import numpy as np
@@ -19,13 +19,20 @@ DIRECTION_COL = "directions"
 CODE_COL = "original_row"
 
 
-class ExperimentGroup(NamedTuple):
+@dataclass
+class ExperimentGroup:
     """All data for one group of recipes sharing the same number of variants."""
 
     size: int
-    chunks: list[str]
+    strategy: str
+    global_chunks: list[str]
     embeddings: np.ndarray
-    questions: list[tuple[str, str, str, list[int]]]
+    questions_ingredients: list[tuple[str, str, str, list[int]]]
+    questions_directions: list[tuple[str, str, str, list[int]]]
+    global_chunks_ingredients: list[str] = None
+    embeddings_ingredients: np.ndarray = None
+    global_chunks_directions: list[str] = None
+    embeddings_directions: np.ndarray = None
 
 
 def _normalize_ingredients_text(ingredients: object) -> str | None:
@@ -62,12 +69,15 @@ def load_data(
     base_path: str,
     recipes_csv: str,
     ingredients_csv: str,
+    directions_csv: str,
     filter_recipes: list[str] = None,
 ) -> pd.DataFrame:
     root = Path(base_path)
     df = pd.read_csv(root / recipes_csv)
     df_ingred = pd.read_csv(root / ingredients_csv)
     df["Ingredients"] = df_ingred["Ingredients"]
+    df_dirs = pd.read_csv(root / directions_csv)
+    df["Directions"] = df_dirs["Directions"]
 
     # Filter by specific recipe names if requested
     if filter_recipes:
@@ -80,6 +90,7 @@ def build_grouped_by_size_controlled(
     df: pd.DataFrame,
     encoding_model: SentenceTransformer,
     device: str,
+    strategy: str,
     n_per_size: int = 100,
 ) -> list[ExperimentGroup]:
     """Build experiment groups with exactly n_per_size questions per cardinalità.
@@ -100,60 +111,127 @@ def build_grouped_by_size_controlled(
     base_recipes = size_6_names[:n_per_size]
 
     grouped_by_size: list[ExperimentGroup] = []
-    print(f"\nBuilding controlled experiment groups (n_per_size={n_per_size})...")
+    print(f"\nBuilding controlled experiment groups ({strategy}) (n_per_size={n_per_size})...")
     for size in tqdm([6, 5, 4, 3], desc="Sizes"):
-        questions: list[tuple[str, str, str, list[int]]] = []
+        questions_ingredients: list[tuple[str, str, str, list[int]]] = []
+        questions_directions: list[tuple[str, str, str, list[int]]] = []
         global_chunks: list[str] = []
+        global_chunks_ingredients: list[str] = []
+        global_chunks_directions: list[str] = []
 
         for recipe_name in base_recipes:
             recipe_df = (
                 df[df[RECIPE_NAME_COL] == recipe_name].sort_values(CODE_COL).head(size)
             )
             code_id = "-".join(str(c) for c in recipe_df[CODE_COL].tolist())
-            correct_chunk_indices: list[int] = []
+            correct_ing_indices: list[int] = []
+            correct_dir_indices: list[int] = []
             for row in recipe_df.itertuples(index=False):
-                start = len(global_chunks)
-                correct_chunk_indices.append(start)
-                ## NOTE Here to change the chunks, what they contain
-                # chunks = [row.Ingredients] + nltk.sent_tokenize(getattr(row, DIRECTION_COL))
-                chunk_ing = row.Ingredients
-                chunk_dir = getattr(row, DIRECTION_COL)
-                global_chunks.append(chunk_ing)
-                global_chunks.append(chunk_dir)
+                if strategy == "mixed":
+                    start = len(global_chunks)
+                    global_chunks.append(row.Ingredients)
+                    correct_ing_indices.append(start)
+                    global_chunks.append(row.Directions)
+                    correct_dir_indices.append(start + 1)
+                elif strategy == "combined":
+                    start = len(global_chunks)
+                    combined_chunk = f"{row.Ingredients}\n{row.Directions}"
+                    global_chunks.append(combined_chunk)
+                    correct_ing_indices.append(start)
+                    correct_dir_indices.append(start)
+                elif strategy == "separated":
+                    start_ing = len(global_chunks_ingredients)
+                    global_chunks_ingredients.append(row.Ingredients)
+                    correct_ing_indices.append(start_ing)
 
-            questions.append(
+                    start_dir = len(global_chunks_directions)
+                    global_chunks_directions.append(row.Directions)
+                    correct_dir_indices.append(start_dir)
+
+            correct_ing_chunks = recipe_df.Ingredients.tolist()
+            correct_dir_chunks = recipe_df.Directions.tolist()
+            questions_ingredients.append(
                 (
                     recipe_name,
                     code_id,
                     f"What are the ingredients of {recipe_name}?",
-                    correct_chunk_indices,
+                    correct_ing_indices,
+                    correct_ing_chunks,
+                )
+            )
+            questions_directions.append(
+                (
+                    recipe_name,
+                    code_id,
+                    f"What are the directions of {recipe_name}?",
+                    correct_dir_indices,
+                    correct_dir_chunks,
                 )
             )
 
-        embeddings = encoding_model.encode(
-            global_chunks,
-            device=device,
-            show_progress_bar=True,
-            batch_size=64,
-        )
+        # Generate embeddings based on the selected strategy
+        embeddings = None
+        embeddings_ingredients = None
+        embeddings_directions = None
+
+        if strategy in ("mixed", "combined"):
+            embeddings = encoding_model.encode(
+                global_chunks,
+                device=device,
+                show_progress_bar=True,
+                batch_size=64,
+            )
+        elif strategy == "separated":
+            print(f"Encoding ingredients chunks...")
+            embeddings_ingredients = encoding_model.encode(
+                global_chunks_ingredients,
+                device=device,
+                show_progress_bar=True,
+                batch_size=64,
+            )
+            print(f"Encoding directions chunks...")
+            embeddings_directions = encoding_model.encode(
+                global_chunks_directions,
+                device=device,
+                show_progress_bar=True,
+                batch_size=64,
+            )
+
         grouped_by_size.append(
-            ExperimentGroup(size, global_chunks, embeddings, questions)
+            ExperimentGroup(
+                size=size,
+                strategy=strategy,
+                global_chunks=global_chunks,
+                embeddings=embeddings,
+                questions_ingredients=questions_ingredients,
+                questions_directions=questions_directions,
+                global_chunks_ingredients=global_chunks_ingredients,
+                embeddings_ingredients=embeddings_ingredients,
+                global_chunks_directions=global_chunks_directions,
+                embeddings_directions=embeddings_directions,
+            )
         )
 
     return grouped_by_size
 
 
 def build_grouped_by_size(
-    df: pd.DataFrame, encoding_model: SentenceTransformer, device: str
+    df: pd.DataFrame,
+    encoding_model: SentenceTransformer,
+    device: str,
+    strategy: str,
 ) -> list[ExperimentGroup]:
     group_counts = df.groupby(RECIPE_NAME_COL).size()
     unique_sizes = sorted([int(s) for s in group_counts.unique()], reverse=True)
 
     grouped_by_size: list[ExperimentGroup] = []
-    print("\nBuilding experiment groups by variant size...")
+    print(f"\nBuilding experiment groups by variant size ({strategy})...")
     for size in tqdm(unique_sizes, desc="Sizes"):
-        questions: list[tuple[str, str, str, list[int]]] = []
+        questions_ingredients: list[tuple[str, str, str, list[int]]] = []
+        questions_directions: list[tuple[str, str, str, list[int]]] = []
         global_chunks: list[str] = []
+        global_chunks_ingredients: list[str] = []
+        global_chunks_directions: list[str] = []
 
         matching_recipes = group_counts[group_counts == size].index
         group_df = df[df[RECIPE_NAME_COL].isin(matching_recipes)]
@@ -161,30 +239,92 @@ def build_grouped_by_size(
         for recipe_name, t_df in group_df.groupby(RECIPE_NAME_COL):
             t_df = t_df.sort_values(CODE_COL)
             code_id = "-".join(str(c) for c in t_df[CODE_COL].tolist())
-            correct_chunk_indices: list[int] = []
+            correct_ing_indices: list[int] = []
+            correct_dir_indices: list[int] = []
             for row in t_df.itertuples(index=False):
-                start = len(global_chunks)
-                correct_chunk_indices.append(start)
-                chunks = [row.Ingredients] + nltk.sent_tokenize(getattr(row, DIRECTION_COL))
-                global_chunks.extend(chunks)
+                if strategy == "mixed":
+                    start = len(global_chunks)
+                    global_chunks.append(row.Ingredients)
+                    correct_ing_indices.append(start)
+                    global_chunks.append(row.Directions)
+                    correct_dir_indices.append(start + 1)
+                elif strategy == "combined":
+                    start = len(global_chunks)
+                    combined_chunk = f"{row.Ingredients}\n{row.Directions}"
+                    global_chunks.append(combined_chunk)
+                    correct_ing_indices.append(start)
+                    correct_dir_indices.append(start)
+                elif strategy == "separated":
+                    start_ing = len(global_chunks_ingredients)
+                    global_chunks_ingredients.append(row.Ingredients)
+                    correct_ing_indices.append(start_ing)
 
-            questions.append(
+                    start_dir = len(global_chunks_directions)
+                    global_chunks_directions.append(row.Directions)
+                    correct_dir_indices.append(start_dir)
+
+            correct_ing_chunks = t_df.Ingredients.tolist()
+            correct_dir_chunks = t_df.Directions.tolist()
+            questions_ingredients.append(
                 (
                     recipe_name,
                     code_id,
                     f"What are the ingredients of {recipe_name}?",
-                    correct_chunk_indices,
+                    correct_ing_indices,
+                    correct_ing_chunks,
+                )
+            )
+            questions_directions.append(
+                (
+                    recipe_name,
+                    code_id,
+                    f"What are the directions of {recipe_name}?",
+                    correct_dir_indices,
+                    correct_dir_chunks,
                 )
             )
 
-        embeddings = encoding_model.encode(
-            global_chunks,
-            device=device,
-            show_progress_bar=True,
-            batch_size=64,
-        )
+        # Generate embeddings based on the selected strategy
+        embeddings = None
+        embeddings_ingredients = None
+        embeddings_directions = None
+
+        if strategy in ("mixed", "combined"):
+            embeddings = encoding_model.encode(
+                global_chunks,
+                device=device,
+                show_progress_bar=True,
+                batch_size=64,
+            )
+        elif strategy == "separated":
+            print(f"Encoding ingredients chunks...")
+            embeddings_ingredients = encoding_model.encode(
+                global_chunks_ingredients,
+                device=device,
+                show_progress_bar=True,
+                batch_size=64,
+            )
+            print(f"Encoding directions chunks...")
+            embeddings_directions = encoding_model.encode(
+                global_chunks_directions,
+                device=device,
+                show_progress_bar=True,
+                batch_size=64,
+            )
+
         grouped_by_size.append(
-            ExperimentGroup(size, global_chunks, embeddings, questions)
+            ExperimentGroup(
+                size=size,
+                strategy=strategy,
+                global_chunks=global_chunks,
+                embeddings=embeddings,
+                questions_ingredients=questions_ingredients,
+                questions_directions=questions_directions,
+                global_chunks_ingredients=global_chunks_ingredients,
+                embeddings_ingredients=embeddings_ingredients,
+                global_chunks_directions=global_chunks_directions,
+                embeddings_directions=embeddings_directions,
+            )
         )
 
     return grouped_by_size

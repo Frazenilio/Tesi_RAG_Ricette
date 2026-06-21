@@ -6,11 +6,16 @@ data:
   # ingredients_csv: "cleaned_ingredients.csv"
   ## NEW: Using my cleaned ingredients
   ingredients_csv: "cleaned_filtered_ingredients.csv"
+  ## NEW: Using my cleaned directions
+  directions_csv: "cleaned_filtered_directions.csv"
   # Optional: specify a list of recipe names to test. If empty, tests all recipes in the dataset.
   filter_recipes:
     - "Carbonara"
     - "Pistachio Cake"
     - "Baked Macaroni and Cheese"
+    - "Pizza"
+    - "Soft Pretzels"
+    - "Italian Pork Chops"
 
 models:
   encoding: "BAAI/bge-large-en-v1.5"
@@ -55,6 +60,11 @@ retrieval:
   # Imposta controlled_dataset: true per usare esattamente n_per_size elementi per ogni cardinalità
   controlled_dataset: false
   n_per_size: 100
+  # Strategies to run and compare. Choices: 'mixed', 'combined', 'separated'
+  strategies:
+    - mixed
+    - combined
+    - separated
 
 
 experiments:

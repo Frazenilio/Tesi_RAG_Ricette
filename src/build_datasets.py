@@ -11,10 +11,29 @@ INPUT_DATASET_PATH = "data/filtered_2M_dataset_V14.csv"
 
 # Output cleaned ingredients path
 OUTPUT_CLEANED_PATH = "data/cleaned_filtered_ingredients.csv"
+OUTPUT_DIRECTIONS_CLEANED_PATH = "data/cleaned_filtered_directions.csv"
 
 # Input CSV column names
 INPUT_TITLE_COL = "title"
 INPUT_INGREDIENTS_COL = "ingredients"
+INPUT_DIRECTIONS_COL = "directions"
+
+
+# ==========================================
+# DIRECTIONS CLEANING LOGIC
+# ==========================================
+def clean_single_direction(d: str) -> str:
+    """
+    Cleans a single direction step by replacing semicolons with commas,
+    removing newline characters, and normalizing white spaces.
+    """
+    d = d.strip()
+    if not d:
+        return ""
+    d = d.replace("\n", " ")
+    d = d.replace(";", ",")
+    d = re.sub(r'\s+', ' ', d)
+    return d.strip()
 
 
 # ==========================================
@@ -121,38 +140,57 @@ def main():
 
     df_in = pd.read_csv(INPUT_DATASET_PATH)
     
-    cleaned_rows = []
+    cleaned_ing_rows = []
+    cleaned_dir_rows = []
     
     for idx, row in df_in.iterrows():
         recipe_name = row[INPUT_TITLE_COL]
 
-        # Parse ingredients list
+        # 1. Parse and clean ingredients list
         raw_ing_str = row[INPUT_INGREDIENTS_COL]
         try:
             ingreds_list = ast.literal_eval(raw_ing_str)
         except (ValueError, SyntaxError):
-            # Fallback if literal_eval fails
             ingreds_list = [ing.strip().strip("'").strip('"') for ing in raw_ing_str.strip("[]").split(",")]
 
-        # Clean ingredients list
-        cleaned_list = []
+        cleaned_ing_list = []
         for ing in ingreds_list:
             cleaned = clean_single_ingredient(ing)
             if cleaned:
-                cleaned_list.append(cleaned)
+                cleaned_ing_list.append(cleaned)
 
-        # Format cleaned ingredients string
-        # Format: "The ingredients of {RecipeName} are: {cleaned_ing_1}; {cleaned_ing_2}; ..."
-        cleaned_ingredients_formatted = f"The ingredients of {recipe_name} are: {'; '.join(cleaned_list)}."
-
-        cleaned_rows.append({
+        cleaned_ingredients_formatted = f"The ingredients of {recipe_name} are: {'; '.join(cleaned_ing_list)}."
+        cleaned_ing_rows.append({
             "Ingredients": cleaned_ingredients_formatted
         })
 
+        # 2. Parse and clean directions list
+        raw_dir_str = row[INPUT_DIRECTIONS_COL]
+        try:
+            dirs_list = ast.literal_eval(raw_dir_str)
+        except (ValueError, SyntaxError):
+            dirs_list = [d.strip().strip("'").strip('"') for d in raw_dir_str.strip("[]").split(",")]
+
+        cleaned_dir_list = []
+        for d in dirs_list:
+            cleaned_d = clean_single_direction(d)
+            if cleaned_d:
+                cleaned_dir_list.append(cleaned_d)
+
+        cleaned_directions_formatted = f"The directions of {recipe_name} are: {'; '.join(cleaned_dir_list)}."
+        cleaned_dir_rows.append({
+            "Directions": cleaned_directions_formatted
+        })
+
     # Save cleaned_ingredients structure
-    df_cleaned = pd.DataFrame(cleaned_rows)
-    df_cleaned.to_csv(OUTPUT_CLEANED_PATH, index=False)
-    print(f"Saved cleaned ingredients to: {OUTPUT_CLEANED_PATH} (Shape: {df_cleaned.shape})")
+    df_cleaned_ing = pd.DataFrame(cleaned_ing_rows)
+    df_cleaned_ing.to_csv(OUTPUT_CLEANED_PATH, index=False)
+    print(f"Saved cleaned ingredients to: {OUTPUT_CLEANED_PATH} (Shape: {df_cleaned_ing.shape})")
+    
+    # Save cleaned_directions structure
+    df_cleaned_dir = pd.DataFrame(cleaned_dir_rows)
+    df_cleaned_dir.to_csv(OUTPUT_DIRECTIONS_CLEANED_PATH, index=False)
+    print(f"Saved cleaned directions to: {OUTPUT_DIRECTIONS_CLEANED_PATH} (Shape: {df_cleaned_dir.shape})")
     
     print("\nDataset creation complete! You can run this script to generate your CSV files.")
 
