@@ -54,7 +54,7 @@ def main():
         print(f"========================================================")
 
         # Build chunks and queries based on the strategy
-        if strategy == "mixed":
+        if strategy == "Singolo-Distinti":
             global_chunks = []
             queries = []  # list of (target_type, recipe_name, query, correct_chunk_indices)
             for recipe_name, recipe_df in df.groupby(RECIPE_NAME_COL):
@@ -80,7 +80,7 @@ def main():
             index = build_faiss_index(embedded_chunks, nlist=max(1, nlist), nprobe=cfg.nprobe)
 
             for target_type in ["ingredients", "directions"]:
-                print(f"\n--- Strategy: MIXED | Target: {target_type.upper()} ---")
+                print(f"\n--- Strategy: SINGOLO-DISTINTI | Target: {target_type.upper()} ---")
                 target_queries = [q for q in queries if q[0] == target_type]
                 for k in k_values:
                     precisions, recalls, ious = [], [], []
@@ -95,7 +95,7 @@ def main():
                         ious.append(iou)
                     print(f"k={k} | Prec: {np.mean(precisions):.2%} | Rec: {np.mean(recalls):.2%} | IoU: {np.mean(ious):.2%}")
 
-        elif strategy == "combined":
+        elif strategy == "Singolo-Aggregati":
             global_chunks = []
             queries = []
             for recipe_name, recipe_df in df.groupby(RECIPE_NAME_COL):
@@ -121,7 +121,7 @@ def main():
             index = build_faiss_index(embedded_chunks, nlist=max(1, nlist), nprobe=cfg.nprobe)
 
             for target_type in ["ingredients", "directions"]:
-                print(f"\n--- Strategy: COMBINED | Target: {target_type.upper()} ---")
+                print(f"\n--- Strategy: SINGOLO-AGGREGATI | Target: {target_type.upper()} ---")
                 target_queries = [q for q in queries if q[0] == target_type]
                 for k in k_values:
                     precisions, recalls, ious = [], [], []
@@ -136,7 +136,7 @@ def main():
                         ious.append(iou)
                     print(f"k={k} | Prec: {np.mean(precisions):.2%} | Rec: {np.mean(recalls):.2%} | IoU: {np.mean(ious):.2%}")
 
-        elif strategy == "separated":
+        elif strategy == "Doppio":
             global_chunks_ingredients = []
             global_chunks_directions = []
             queries_ing = []
@@ -175,7 +175,7 @@ def main():
             index_dir = build_faiss_index(embedded_dir, nlist=max(1, nlist_dir), nprobe=cfg.nprobe)
 
             # Evaluate Ingredients
-            print(f"\n--- Strategy: SEPARATED | Target: INGREDIENTS ---")
+            print(f"\n--- Strategy: DOPPIO | Target: INGREDIENTS ---")
             for k in k_values:
                 precisions, recalls, ious = [], [], []
                 for _, recipe_name, query, correct_indices in queries_ing:
@@ -190,7 +190,7 @@ def main():
                 print(f"k={k} | Prec: {np.mean(precisions):.2%} | Rec: {np.mean(recalls):.2%} | IoU: {np.mean(ious):.2%}")
 
             # Evaluate Directions
-            print(f"\n--- Strategy: SEPARATED | Target: DIRECTIONS ---")
+            print(f"\n--- Strategy: DOPPIO | Target: DIRECTIONS ---")
             for k in k_values:
                 precisions, recalls, ious = [], [], []
                 for _, recipe_name, query, correct_indices in queries_dir:

@@ -52,6 +52,7 @@ class Config:
     delete_after_run: bool = False
     filter_recipes: list[str] = field(default_factory=list)
     language_model_types: dict[str, str] = field(default_factory=dict)
+    judges: list[ModelSpec] = field(default_factory=list)
 
 
 def _normalize_hf_model_id(model_id: str) -> str:
@@ -169,5 +170,6 @@ def load_config(path: Path = _DEFAULT_CONFIG_PATH) -> Config:
         controlled_dataset=raw["retrieval"].get("controlled_dataset", False),
         n_per_size=raw["retrieval"].get("n_per_size", 100),
         experiments=experiments,
-        strategies=raw["retrieval"].get("strategies", ["mixed"]),
+        strategies=raw["retrieval"].get("strategies", ["Singolo-Distinti"]),
+        judges=[_build_inline_model_spec(str(j)) for j in raw["models"].get("judges", [])],
     )

@@ -127,19 +127,20 @@ def build_grouped_by_size_controlled(
             correct_ing_indices: list[int] = []
             correct_dir_indices: list[int] = []
             for row in recipe_df.itertuples(index=False):
-                if strategy == "mixed":
+                ## Creazione dei chunk in base all'esigenza
+                if strategy == "Singolo-Distinti":
                     start = len(global_chunks)
                     global_chunks.append(row.Ingredients)
                     correct_ing_indices.append(start)
                     global_chunks.append(row.Directions)
                     correct_dir_indices.append(start + 1)
-                elif strategy == "combined":
+                elif strategy == "Singolo-Aggregati":
                     start = len(global_chunks)
                     combined_chunk = f"{row.Ingredients}\n{row.Directions}"
                     global_chunks.append(combined_chunk)
                     correct_ing_indices.append(start)
                     correct_dir_indices.append(start)
-                elif strategy == "separated":
+                elif strategy == "Doppio":
                     start_ing = len(global_chunks_ingredients)
                     global_chunks_ingredients.append(row.Ingredients)
                     correct_ing_indices.append(start_ing)
@@ -174,14 +175,14 @@ def build_grouped_by_size_controlled(
         embeddings_ingredients = None
         embeddings_directions = None
 
-        if strategy in ("mixed", "combined"):
+        if strategy in ("Singolo-Distinti", "Singolo-Aggregati"):
             embeddings = encoding_model.encode(
                 global_chunks,
                 device=device,
                 show_progress_bar=True,
                 batch_size=64,
             )
-        elif strategy == "separated":
+        elif strategy == "Doppio":
             print(f"Encoding ingredients chunks...")
             embeddings_ingredients = encoding_model.encode(
                 global_chunks_ingredients,
@@ -242,19 +243,19 @@ def build_grouped_by_size(
             correct_ing_indices: list[int] = []
             correct_dir_indices: list[int] = []
             for row in t_df.itertuples(index=False):
-                if strategy == "mixed":
+                if strategy == "Singolo-Distinti":
                     start = len(global_chunks)
                     global_chunks.append(row.Ingredients)
                     correct_ing_indices.append(start)
                     global_chunks.append(row.Directions)
                     correct_dir_indices.append(start + 1)
-                elif strategy == "combined":
+                elif strategy == "Singolo-Aggregati":
                     start = len(global_chunks)
                     combined_chunk = f"{row.Ingredients}\n{row.Directions}"
                     global_chunks.append(combined_chunk)
                     correct_ing_indices.append(start)
                     correct_dir_indices.append(start)
-                elif strategy == "separated":
+                elif strategy == "Doppio":
                     start_ing = len(global_chunks_ingredients)
                     global_chunks_ingredients.append(row.Ingredients)
                     correct_ing_indices.append(start_ing)
@@ -289,14 +290,14 @@ def build_grouped_by_size(
         embeddings_ingredients = None
         embeddings_directions = None
 
-        if strategy in ("mixed", "combined"):
+        if strategy in ("Singolo-Distinti", "Singolo-Aggregati"):
             embeddings = encoding_model.encode(
                 global_chunks,
                 device=device,
                 show_progress_bar=True,
                 batch_size=64,
             )
-        elif strategy == "separated":
+        elif strategy == "Doppio":
             print(f"Encoding ingredients chunks...")
             embeddings_ingredients = encoding_model.encode(
                 global_chunks_ingredients,

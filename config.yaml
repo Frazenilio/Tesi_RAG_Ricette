@@ -20,9 +20,9 @@ data:
 models:
   encoding: "BAAI/bge-large-en-v1.5"
   language: 
-    # - "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF"
-    # - "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF"
-    - "qwen3.5:0.8b"
+    - "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF" ## DA USARE
+    - "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" ## DA USARE
+    # - "qwen3.5:0.8b" ## DA TOGLIERE
     - "gemma3:1b"
     # - "qwen3.5:2b"
     # - "qwen3.5:4b"
@@ -37,6 +37,10 @@ models:
     # - "ministral-3:14b"
     # - "gemma4:26b"
     # - "gpt-oss:20b"
+  judges:
+    - "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF"
+    - "qwen3.5:0.8b"
+    - "gemma3:1b"
 
 
   # device: "cuda"
@@ -60,11 +64,11 @@ retrieval:
   # Imposta controlled_dataset: true per usare esattamente n_per_size elementi per ogni cardinalità
   controlled_dataset: false
   n_per_size: 100
-  # Strategies to run and compare. Choices: 'mixed', 'combined', 'separated'
+  # Strategies to run and compare. Choices: 'Singolo-Distinti', 'Singolo-Aggregati', 'Doppio'
   strategies:
-    - mixed
-    - combined
-    - separated
+    - Singolo-Distinti
+    - Singolo-Aggregati
+    - Doppio
 
 
 experiments:

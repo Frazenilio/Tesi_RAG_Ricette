@@ -71,7 +71,7 @@ def prepare_generation_cases(
         index_ing = None
         index_dir = None
         if include_rag:
-            if strategy == "separated":
+            if strategy == "Doppio":
                 if len(group.global_chunks_ingredients) > 0:
                     nlist = min(cfg.nlist, len(group.global_chunks_ingredients))
                     embeddings_f32 = np.array(group.embeddings_ingredients).astype(np.float32)
@@ -97,7 +97,7 @@ def prepare_generation_cases(
         ) in enumerate(tqdm(questions, desc=f"Size {size}", leave=False)):
             
             # Select target database chunks
-            if strategy == "separated":
+            if strategy == "Doppio":
                 current_chunks = group.global_chunks_ingredients if target_type == "ingredients" else group.global_chunks_directions
                 current_index = index_ing if target_type == "ingredients" else index_dir
             else:
