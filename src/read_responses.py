@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Make sure to use a raw string (r"path\to\file") or forward slashes (path/to/file) to avoid escape sequence issues on Windows.
-JSON_PATH = r"results\2026-06-21T11-48-57\qwen3.5_0.8b\rag\Baked Macaroni and Cheese\Singolo-Aggregati\directions\results_2026-06-21T11-48-57.json"
+JSON_PATH = r"results\2026-06-29T16-55-34\gemma3_1b\rag\Singolo-Distinti\directions\results_2026-06-29T16-55-34.json"
 
 def format_split_list(text, label):
     lines = []
