@@ -10,7 +10,6 @@ from tqdm import tqdm
 from .config import Config
 from .generation import query_llm
 from .metrics import compute_iou_stats, sentence_iou
-from .plot import plot_divergence_results, plot_results
 from .prompts import (
     SYSTEM_PROMPT_PLAIN,
     SYSTEM_PROMPT_RAG,
@@ -255,7 +254,6 @@ def run_test_rag(
     cfg: Config,
     model_runtime,
     target_type: str,
-    plot_dir: Path | None = None,
     trace_path: Path | None = None,
     generated_cases: dict[int, list[GeneratedCase]] | None = None,
 ) -> dict:
@@ -297,14 +295,6 @@ def run_test_rag(
                 }
             )
 
-        save_path = plot_dir / f"size_{size}.png" if plot_dir is not None else None
-        plot_results(
-            maxs,
-            means,
-            stddevs,
-            title=f"Test 1 — RAG ({target_type}) | varianti={size}",
-            save_path=save_path,
-        )
         results[size] = {
             "maxs": maxs,
             "means": means,
@@ -326,7 +316,6 @@ def run_test_llm_only(
     cfg: Config,
     model_runtime,
     target_type: str,
-    plot_dir: Path | None = None,
     generated_cases: dict[int, list[GeneratedCase]] | None = None,
 ) -> dict:
     """Test 2: Direct query WITHOUT context."""
@@ -366,14 +355,6 @@ def run_test_llm_only(
                 }
             )
 
-        save_path = plot_dir / f"size_{size}.png" if plot_dir is not None else None
-        plot_results(
-            maxs,
-            means,
-            stddevs,
-            title=f"Test 2 — LLM only ({target_type}) | varianti={size}",
-            save_path=save_path,
-        )
         results[size] = {
             "maxs": maxs,
             "means": means,
@@ -395,7 +376,6 @@ def run_test_rag_vs_llm(
     cfg: Config,
     model_runtime,
     target_type: str,
-    plot_dir: Path | None = None,
     generated_cases: dict[int, list[GeneratedCase]] | None = None,
 ) -> dict:
     """Test 3: Compare RAG response vs LLM-only response (divergence)."""
@@ -435,12 +415,6 @@ def run_test_rag_vs_llm(
                 }
             )
 
-        save_path = plot_dir / f"size_{size}.png" if plot_dir is not None else None
-        plot_divergence_results(
-            scores,
-            title=f"Test 3 — RAG vs LLM ({target_type}) | varianti={size}",
-            save_path=save_path,
-        )
         results[size] = {
             "scores": scores,
             "pct_perfect": len([v for v in scores if v == 1.0]) / len(scores)

@@ -9,13 +9,13 @@ data:
   ## NEW: Using my cleaned directions
   directions_csv: "cleaned_filtered_directions.csv"
   # Optional: specify a list of recipe names to test. If empty, tests all recipes in the dataset.
-  # filter_recipes:
-  #   - "Carbonara"
-  #   - "Pistachio Cake"
-  #   - "Baked Macaroni and Cheese"
-  #   - "Pizza"
-  #   - "Soft Pretzels"
-  #   - "Italian Pork Chops"
+  filter_recipes:
+    - "Carbonara"
+    - "Pistachio Cake"
+    - "Baked Macaroni and Cheese"
+    - "Pizza"
+    - "Soft Pretzels"
+    - "Italian Pork Chops"
 
 models:
   encoding: "BAAI/bge-large-en-v1.5"
