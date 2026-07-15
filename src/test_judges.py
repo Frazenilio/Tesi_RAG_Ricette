@@ -26,17 +26,17 @@ def parse_judge_output(text: str) -> tuple[int, str]:
     # Normalize markdown bold markers and white space to make parsing robust
     cleaned = text.replace("**", "").replace("__", "").replace("`", "").strip()
     
-    # Try Pattern 1: Standard structured format "Decision: [score]"
-    match = re.search(r"(?i)Decision\s*:?\s*(\d+)", cleaned)
+    # Try Pattern 1: Standard structured format "Decision: [score]" or "Score: [score]"
+    match = re.search(r"(?i)(?:Decision|Score)\s*:?\s*(\d+)", cleaned)
     if match:
         score = int(match.group(1))
-        # Find explanation in rest of text
-        exp_match = re.search(r"(?i)Explanation\s*:?\s*(.*)", cleaned, re.DOTALL)
+        # Find explanation in rest of text, stopping if it hits another Decision/Score block
+        exp_match = re.search(r"(?i)Explanation\s*:?\s*(.*?)(?=\n(?:Decision|Score)\s*:|$)", cleaned, re.DOTALL)
         explanation = exp_match.group(1).strip() if exp_match else text
         return min(max(score, 0), 100), explanation
 
     # Try Pattern 2: Any matching word followed by is/was/rating [score]
-    match = re.search(r"(?i)Decision\s+(?:is|was|rating|score)\s*(\d+)", cleaned)
+    match = re.search(r"(?i)(?:Decision|Score)\s+(?:is|was|rating|score)\s*(\d+)", cleaned)
     if match:
         score = int(match.group(1))
         return min(max(score, 0), 100), text

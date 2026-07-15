@@ -43,6 +43,7 @@ def prepare_generation_cases(
     *,
     include_rag: bool,
     include_llm: bool,
+    use_oracle: bool = False,
     trace_path: Path | None = None,
 ) -> dict[int, list[GeneratedCase]]:
     if not include_rag and not include_llm:
@@ -66,10 +67,10 @@ def prepare_generation_cases(
         strategy = group.strategy
         questions = group.questions_ingredients if target_type == "ingredients" else group.questions_directions
 
-        # Build FAISS index/indices for this group if we need to do RAG
+        # Build FAISS index/indices for this group if we need to do RAG and not using Oracle
         index_ing = None
         index_dir = None
-        if include_rag:
+        if include_rag and not use_oracle:
             if strategy == "Doppio":
                 if len(group.global_chunks_ingredients) > 0:
                     nlist = min(cfg.nlist, len(group.global_chunks_ingredients))
@@ -109,7 +110,11 @@ def prepare_generation_cases(
             response_llm = None
 
             if include_rag:
-                if current_index is not None:
+                if use_oracle:
+                    context_indices = [int(i) for i in correct_indices]
+                    context_chunks = correct_chunks
+                    context = "\n\n".join(context_chunks)
+                elif current_index is not None:
                     # Use FAISS to retrieve the context, setting k = len(correct_indices)
                     retrieved_ids, retrieved_chunks, context = retrieve(
                         query=query_text,

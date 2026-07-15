@@ -19,6 +19,9 @@ from src.ollama_utils import check_ollama_server
 from src.prompts import PROMPT_LLM_JUDGE, PROMPT_LIST_CORRECTOR, SYSTEM_PROMPT_CORRECTOR, PROMPT_ANSWER_CORRECTOR
 from src.test_judges import normalize_model_name, parse_judge_output
 
+
+second_round: bool = False
+
 def parse_corrector_output(text: str) -> tuple[str, str]:
     """
     Parse the output of the corrector LLM to extract the Corrected Answer
@@ -108,7 +111,7 @@ def provide_judgement(original_answer: str, judgement: str, current_cl: str, \
 
     ## TODO add the parsing method based on the PROMPT_LIST_CORRECTOR. The output is a str
     ## but the format is JSON-like (see the prompt to understand) 
-    new_list: str = query_llm(
+    raw_response: str = query_llm(
         system_prompt=SYSTEM_PROMPT_CORRECTOR,
         user_message=corrector_user_message,
         model_runtime=generator_runtime,
@@ -121,7 +124,17 @@ def provide_judgement(original_answer: str, judgement: str, current_cl: str, \
         keep_alive=cfg.llm_keep_alive,
     )
 
-    return new_list
+    # Parse the output based on PROMPT_LIST_CORRECTOR
+    match = re.search(r"<correction_list>(.*?)<[/\\]correction_list>", raw_response, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        ans = match.group(1).strip()
+    else:
+        ans = raw_response.strip()
+        
+    # Clean up markdown code blocks if the model wrapped it anyway
+    ans = re.sub(r"^```(?:json)?\n?", "", ans, flags=re.IGNORECASE)
+    ans = re.sub(r"\n?```$", "", ans, flags=re.IGNORECASE)
+    return ans.strip()
 
 def correct_answer(original_answer: str, correction_list: str, \
         generator_runtime, cfg) -> str:
@@ -130,8 +143,7 @@ def correct_answer(original_answer: str, correction_list: str, \
         correction_list=correction_list
     )
 
-    ## TODO add the parsing method based on PROMPT_ANSWER_CORRECTOR. The output is a str
-    corrected_answer: str = query_llm(
+    raw_response: str = query_llm(
         system_prompt=SYSTEM_PROMPT_CORRECTOR,
         user_message=corrector_message,
         model_runtime=generator_runtime,
@@ -144,7 +156,18 @@ def correct_answer(original_answer: str, correction_list: str, \
         keep_alive=cfg.llm_keep_alive,
     )
 
-    return corrected_answer
+    # Parse the output based on PROMPT_ANSWER_CORRECTOR
+    # Support <correct_answer> as well since some models hallucinate the exact tag name
+    match = re.search(r"<(?:corrected_answer|correct_answer)>(.*?)<[/\\](?:corrected_answer|correct_answer)>", raw_response, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        ans = match.group(1).strip()
+    else:
+        ans = raw_response.strip()
+        
+    # Clean up markdown code blocks if the model wrapped it anyway
+    ans = re.sub(r"^```(?:markdown|text)?\n?", "", ans, flags=re.IGNORECASE)
+    ans = re.sub(r"\n?```$", "", ans, flags=re.IGNORECASE)
+    return ans.strip()
     
     
 
@@ -157,6 +180,11 @@ def main():
         default=Path("config.yaml"),
         metavar="PATH",
         help="Path to a YAML config file (default: config.yaml at project root)",
+    )
+    parser.add_argument(
+        "--use-oracle",
+        action="store_true",
+        help="Use the oracle database (bypass FAISS and use ground truth chunks as context)",
     )
     args = parser.parse_args()
 
@@ -199,6 +227,10 @@ def main():
         
         # Hardcode strategy as per requirements
         strategy = "Singolo-Distinti"
+        
+        if args.use_oracle:
+            print(f"\nUsing ORACLE mode. FAISS indexing will be bypassed.")
+            
         print(f"\nBuilding grouped data for strategy '{strategy}'...")
         if cfg.controlled_dataset:
             groups = build_grouped_by_size_controlled(
@@ -244,6 +276,7 @@ def main():
                         target_type,
                         include_rag=True,
                         include_llm=False, # We only need RAG
+                        use_oracle=args.use_oracle,
                         trace_path=None,   # Don't save trace for simplicity
                     )
                     
@@ -271,6 +304,8 @@ def main():
                                 "query": case.query,
                                 "correct_answers": [f"Reference {idx}: {ans}" for idx, ans in enumerate(correct_list, 1)],
                                 "original_answer": original_answer,
+                                "human_score": 50,
+                                "human_explanation": "",
                             }
                             
                             print(f"      [Round 1] Judging {case.recipe_name}...")
@@ -287,63 +322,40 @@ def main():
                                 "judges": r1_judges_dict,
                                 "average_score": r1_avg
                             }
-                            
-                            # 3. Correction Step
-                            ## Now the Corrector LIST takes one judgmenet at time
-                            ## and output a correction list which has to be saved and passed again to the
-                            ## next judgement
-                            print(f"      [Correction] {generator_runtime.results_label} is creating the CL")
-                            # Build judgements string for the corrector
-                            # judgements_str = ""
-                            correction_list = ""
-                            for judge_name, judge_data in r1_judges_dict.items():
-                                ## Score removed for simplicity since it wasn't used
-                                # judgements_str += f"Judgement: {judge_data['explanation']}\n"
-                                correction_list = provide_judgement(original_answer, judge_data['explanation'], \
-                                    correction_list, generator_runtime=generator_runtime, cfg=cfg)
+
+                            if second_round:
+                                print(f"      [Correction] {generator_runtime.results_label} is creating the CL")
+                                # Build judgements string for the corrector
+                                # judgements_str = ""
+                                correction_list = ""
+                                for judge_name, judge_data in r1_judges_dict.items():
+                                    ## Score removed for simplicity since it wasn't used
+                                    # judgements_str += f"Judgement: {judge_data['explanation']}\n"
+                                    correction_list = provide_judgement(original_answer, judge_data['explanation'], \
+                                        correction_list, generator_runtime=generator_runtime, cfg=cfg)
                                 
-                            # corrector_user_message = PROMPT_CORRECTOR.format(
-                            #     original_answer=original_answer,
-                            #     judgements=judgements_str
-                            # )
-                            
-                            # corrector_response = query_llm(
-                            #     system_prompt=SYSTEM_PROMPT_CORRECTOR,
-                            #     user_message=corrector_user_message,
-                            #     model_runtime=generator_runtime,
-                            #     num_ctx=cfg.llm_num_ctx,
-                            #     num_predict=cfg.llm_num_predict,
-                            #     think=cfg.llm_think,
-                            #     temperature=cfg.llm_temperature, # Same as RAG generation
-                            #     timeout=cfg.llm_timeout,
-                            #     retries=cfg.llm_retries,
-                            #     keep_alive=cfg.llm_keep_alive,
-                            # )
-                            
-                            # corrected_answer, correction_list = parse_corrector_output(corrector_response)
-                            
-                            ## 4. Now ask the LLM to fix the answer
-                            print(f"      [Correction] {generator_runtime.results_label} is correcting the answer")
+                                ## 4. Now ask the LLM to fix the answer
+                                print(f"      [Correction] {generator_runtime.results_label} is correcting the answer")
 
-                            corrected_answer = correct_answer(original_answer, correction_list)
+                                corrected_answer = correct_answer(original_answer, correction_list, generator_runtime=generator_runtime, cfg=cfg)
 
 
-                            # 5. Round 2: Judges evaluate corrected answer
-                            print(f"      [Round 2] Judging corrected answer for {case.recipe_name}...")
-                            r2_judges_dict, r2_avg = run_judge_round(
-                                corrected_answer, 
-                                case.query, 
-                                correct_answers_str, 
-                                selected_judges, 
-                                cfg
-                            )
-                            
-                            qa_entry["round_2"] = {
-                                "corrected_answer": corrected_answer,
-                                "correction_list": correction_list,
-                                "judges": r2_judges_dict,
-                                "average_score": r2_avg,
-                            }
+                                # 5. Round 2: Judges evaluate corrected answer
+                                print(f"      [Round 2] Judging corrected answer for {case.recipe_name}...")
+                                r2_judges_dict, r2_avg = run_judge_round(
+                                    corrected_answer, 
+                                    case.query, 
+                                    correct_answers_str, 
+                                    selected_judges, 
+                                    cfg
+                                )
+                                
+                                qa_entry["round_2"] = {
+                                    "corrected_answer": corrected_answer,
+                                    "correction_list": correction_list,
+                                    "judges": r2_judges_dict,
+                                    "average_score": r2_avg,
+                                }
                             
                             qa_pairs.append(qa_entry)
                             

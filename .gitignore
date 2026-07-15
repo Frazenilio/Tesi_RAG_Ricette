@@ -1,1 +1,4 @@
 results/
+*.pyc
+*.cpython-314.pyc
+src/__pycache__/
