@@ -21,13 +21,13 @@ models:
   encoding: "BAAI/bge-large-en-v1.5"
   language: 
     # - "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF" ## DA USARE
-    - "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" ## DA USARE
+    # - "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" ## DA USARE
     # - "qwen3.5:0.8b" ## DA TOGLIERE
-    - "gemma3:1b"
+    # - "gemma3:1b"
     # - "qwen3.5:2b"
-    # - "qwen3.5:4b"
-    - "ministral-3:3b"
-    # - "granite4.1:3b"
+    - "qwen3.5:4b"
+    # - "ministral-3:3b"
+    - "granite4.1:3b"
     # - "gemma3:4b"
     # - "gemma3:12b"
     # - "gemma4:e2b"
