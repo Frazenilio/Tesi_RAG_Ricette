@@ -13,5 +13,7 @@ OR_NAME_API: dict[Model, str] = {
 }
 
 GROQ_NAME_API: dict[Model, str] = {
-    Model.LLAMA : "llama-3.1-8b-instant"
+    Model.LLAMA : "llama-3.1-8b-instant",
+    Model.GPT : "openai/gpt-oss-20b",
+    Model.QWEN : "qwen/qwen3.6-27b"
 }

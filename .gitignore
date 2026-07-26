@@ -1,6 +1,7 @@
 results/
 *.pyc
 *.cpython-314.pyc
+*.tex
 src/__pycache__/
 GroqKEY.txt
 OpenRouterKEY.txt
