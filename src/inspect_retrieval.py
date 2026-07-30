@@ -310,6 +310,53 @@ def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(report, encoding="utf-8")
     print(f"\nReport saved to: {OUTPUT_PATH.absolute()}")
+    
+    # ── Plotting for Documentation ──
+    try:
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        
+        plot_data = []
+        for strategy, res_list in all_results.items():
+            for qr in res_list:
+                own_count = sum(1 for rc in qr.retrieved if rc.meta.recipe_name == qr.recipe_name)
+                # Recall: fraction of correct variants successfully retrieved
+                recall = min(own_count / qr.variant_count, 1.0)
+                plot_data.append({
+                    "Strategy": strategy,
+                    "Query Type": qr.query_type.capitalize(),
+                    "Recall": recall * 100  # Convert to percentage
+                })
+                
+        if plot_data:
+            df_plot = pd.DataFrame(plot_data)
+            plt.figure(figsize=(10, 6))
+            sns.set_theme(style="whitegrid")
+            
+            # Use barplot to show the average recall
+            sns.barplot(
+                x="Strategy", 
+                y="Recall", 
+                hue="Query Type", 
+                data=df_plot, 
+                palette="muted", 
+                errorbar=None  # Computes mean without error bars for cleaner look
+            )
+            
+            plt.title("FAISS Retrieval Accuracy (Average Recall)", fontsize=14, pad=15)
+            plt.ylabel("Average Recall (%)", fontsize=12)
+            plt.xlabel("Indexing Strategy", fontsize=12)
+            plt.ylim(0, 105)
+            plt.legend(title="Query Type")
+            plt.tight_layout()
+            
+            plot_path = Path("results") / "retrieval_metrics.png"
+            plt.savefig(plot_path, dpi=300)
+            print(f"Plot saved to: {plot_path.absolute()}")
+            
+    except ImportError:
+        print("Pandas, Matplotlib, or Seaborn not installed. Skipping plot generation.")
 
 
 if __name__ == "__main__":

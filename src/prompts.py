@@ -83,13 +83,13 @@ PROMPT_LLM_JUDGE = \
     You are a helpful assistant acting as an impartial judge that is not afraid of giving bad scores nor good ones when deserved. 
     You will be given a Question, Reference Answers, and a Provided Answer. 
     Your task is to judge whether the Provided Answer is correct by comparing it to the Reference Answers. The score should reflect how well the Provided Answer matches at least one Reference Answer. The existence of multiple Reference Answers must not increase or decrease the score by itself. A correct answer should receive the same score whether there is one Reference Answer or many.
-    The evalutation must be performed giving a score from 0 to 100 based on similarity to the Reference Answers. In particular, the task is about evaluating the correctness of the retrieval: 
-    - if the Provided Answer matches one or more Reference Answers in a logically coherent way, then the score should be somehwere near 100; 
-    - If the answer is very  different from the Reference Answers or even if similar to some of them but do not make sense, the scoring should be somewhere close to 0;
-    - Scoring 80 is prohibited.
-    If the answer is the exact copy of one of the Reference Answers then the score should be 100. With "exact copy" we mean that the answer has the same listed elements but it may also have some grammatical additions (ex.: numbers/other symbols for clarifying a list/order or grammatical corrections). 
+    The evalutation must be performed giving a score from {min_score} to {max_score} based on similarity to the Reference Answers. In particular, the task is about evaluating the correctness of the retrieval: 
+    - if the Provided Answer matches one or more Reference Answers in a logically coherent way, then the score should be somehwere near {max_score}; 
+    - If the answer is very  different from the Reference Answers or even if similar to some of them but do not make sense, the scoring should be somewhere close to {min_score};
+    - Scoring {default_score} is prohibited.
+    If the answer is the exact copy of one of the Reference Answers then the score should be {max_score}. With "exact copy" we mean that the answer has the same listed elements but it may also have some grammatical additions (ex.: numbers/other symbols for clarifying a list/order or grammatical corrections). 
     If the Provided Answer is an exact copy of any single Reference Answer:
-    - Assign Decision: 100.
+    - Assign Decision: {max_score}.
     - Do NOT analyze the answer further.
     - Do NOT comment on duplicated ingredients, grammar, wording, or recipe correctness.
     - The explanation must contain exactly one point: "- No operations needed."
@@ -121,7 +121,7 @@ PROMPT_LLM_JUDGE = \
     -------- CONTEXT END --------
 
     --- OUTPUT FORMAT ---
-    Decision: [0-100 Score]
+    Decision: [{min_score}-{max_score} Score]
     Explanation: [Your Explanation]
     """
 

@@ -18,12 +18,19 @@ from src.prompts import PROMPT_LLM_JUDGE
 
 # --- Configuration ---
 INPUT_CSV: Path = Path("data/judgement_dataset.csv")
-OUTPUT_CSV: Path = Path("data/API_judges.csv")
-JUDGEMENT_CSV: Path = Path("data/API_Explanations.csv")
+# OUTPUT_CSV: Path = Path("data/API_judges.csv")
+REFERENCE_CSV: Path = Path("data/API_judges.csv")
+OUTPUT_CSV: Path = Path("data/API_Max10_judges.csv")
+# JUDGEMENT_CSV: Path = Path("data/API_Explanations.csv")
+JUDGEMENT_CSV: Path = Path("data/API_Explanations_Max10.csv")
 SAMPLE_SIZE: int = 30  # per category
 MAX_RETRIES: int = 3
 RETRY_DELAY: float = 5.0
 COOLDOWN_JUDGE: float = 5.0
+
+MAX_SCORE: int = 10
+MIN_SCORE: int = 0
+DEFAULT_SCORE: int = 8
 
 # --- Judges to invoke (fill manually) ---
 # Each entry is an APICall instance.
@@ -38,7 +45,8 @@ def parse_response(raw_response: str) -> tuple[int, str]:
     """Extracts Decision and Explanation from the raw API response."""
     # Find Decision
     score = -1
-    score_match = re.search(r"Decision:\s*(\d+)", raw_response)
+    # This allows things like "**Decision:**", "Decision :", or "Decision: The score is 100"
+    score_match = re.search(r"(?i)Decision[^\d]*(\d+)", raw_response)
     if score_match:
         try:
             score = int(score_match.group(1))
@@ -47,7 +55,7 @@ def parse_response(raw_response: str) -> tuple[int, str]:
             
     # Find Explanation
     explanation = raw_response
-    exp_match = re.search(r"Explanation:\s*(.*)", raw_response, re.DOTALL)
+    exp_match = re.search(r"(?i)Explanation[^\w]*(.*)", raw_response, re.DOTALL)
     if exp_match:
         explanation = exp_match.group(1).strip()
         
@@ -75,6 +83,11 @@ def interrogateJudge(judge: APICall, system_prompt: str, formatted_question: str
                 return -1, f"API_ERROR: {e}"
     return -1, "Unknown Error"
 
+def calculate_delta(human_score: int, model_score: int, max_score: int = MAX_SCORE) -> float:
+    """Calculates the delta by scaling the 0-100 human score to the current max_score."""
+    scaled_human = (human_score / 100.0) * max_score
+    return round(model_score - scaled_human, 2)
+
 def saveJudge(df_scores: pd.DataFrame, df_exps: pd.DataFrame, score: int, explanation: str, human_score: int, idx_row: int, idx_exp: int, idx_judge: int) -> None:
     score_col = f"Judge {idx_judge} Numeric Score"
     exp_col = f"Judge {idx_judge} Explanation"
@@ -82,12 +95,11 @@ def saveJudge(df_scores: pd.DataFrame, df_exps: pd.DataFrame, score: int, explan
     
     df_scores.loc[idx_row, score_col] = score
     if score != -1:
-        df_scores.loc[idx_row, delta_col] = score - human_score
+        df_scores.loc[idx_row, delta_col] = calculate_delta(human_score, score)
     else:
-        df_scores.loc[idx_row, delta_col] = ""
+        df_scores.loc[idx_row, delta_col] = pd.NA
         
     df_exps.loc[idx_exp, exp_col] = explanation
-
 
 def fill_csv(csv_path: Path, rows: list = None) -> None:
     if rows is None:
@@ -126,8 +138,14 @@ def fill_csv(csv_path: Path, rows: list = None) -> None:
         return
         
     # Split prompt into system and question template
-    system_prompt, question_template = getPrompts(PROMPT_LLM_JUDGE)
+    system_prompt_raw, question_template = getPrompts(PROMPT_LLM_JUDGE)
     
+    system_prompt = system_prompt_raw.format(
+        min_score=MIN_SCORE,
+        max_score=MAX_SCORE,
+        default_score=DEFAULT_SCORE
+    )
+
     # Build dynamic headers for output CSV
     out_headers = ["original_row"]
     exp_headers = ["original_row"]
@@ -172,7 +190,10 @@ def fill_csv(csv_path: Path, rows: list = None) -> None:
         formatted_question = question_template.format(
             prompted_query=q,
             llm_rag_answer=ans,
-            correct_answers=refs
+            correct_answers=refs,
+            min_score = MIN_SCORE,
+            max_score = MAX_SCORE,
+            default_score = DEFAULT_SCORE
         )
         
         # Invoke judges
@@ -203,7 +224,12 @@ def fix_missing(csv_missing: Path, csv_exp: Path = JUDGEMENT_CSV) -> None:
     df_input = pd.read_csv(INPUT_CSV)
     df_input["_original_row"] = df_input.index + 2
     
-    system_prompt, question_template = getPrompts(PROMPT_LLM_JUDGE)
+    system_prompt_raw, question_template = getPrompts(PROMPT_LLM_JUDGE)
+    system_prompt = system_prompt_raw.format(
+        min_score=MIN_SCORE,
+        max_score=MAX_SCORE,
+        default_score=DEFAULT_SCORE
+    )
     
     score_cols = [col for col in df.columns if col.endswith("Numeric Score")]
     mask = (df[score_cols] == -1).any(axis=1)
@@ -235,7 +261,10 @@ def fix_missing(csv_missing: Path, csv_exp: Path = JUDGEMENT_CSV) -> None:
         formatted_question = question_template.format(
             prompted_query=q,
             llm_rag_answer=ans,
-            correct_answers=refs
+            correct_answers=refs,
+            min_score = MIN_SCORE,
+            max_score = MAX_SCORE,
+            default_score = DEFAULT_SCORE
         )
         
         for j_idx, judge in enumerate(judges.values(), start=1):
@@ -265,7 +294,14 @@ def fix_missing(csv_missing: Path, csv_exp: Path = JUDGEMENT_CSV) -> None:
     print(f"Saved fixed rows back to {csv_missing} and {csv_exp}")
 
 def main():
-    # fill_csv(OUTPUT_CSV)
+    # Read the exact rows evaluated in the previous run
+    df_old = pd.read_csv(REFERENCE_CSV)
+    old_rows = df_old["original_row"].tolist()
+    
+    # Pass them to fill_csv to ensure a 1-to-1 comparison
+    ## For creating the csv anew (cfr.: new score scale)
+    # fill_csv(OUTPUT_CSV, rows=old_rows)
+    ## This one is for fixing missing rows (cfr.: token finished on previous run)
     fix_missing(OUTPUT_CSV)
 
 if __name__ == "__main__":

@@ -38,8 +38,9 @@ class OpenRouterAPIRequest(APICall):
                         "role": "user",
                         "content": question
                     }
-                ]   
-            })
+                ],
+                "temperature": 0.0
+            }),
         )
 
         try:

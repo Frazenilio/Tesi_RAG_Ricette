@@ -30,7 +30,7 @@ class GroqAPI(APICall):
                 "content": question
             },
             ],
-            temperature=1,
+            temperature=0,
             max_completion_tokens=2048,
             top_p=1,
             # reasoning_effort="medium",
