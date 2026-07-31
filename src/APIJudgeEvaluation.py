@@ -14,23 +14,24 @@ from src.APIRequests.APICall import APICall
 from src.APIRequests.OpenRouterAPIRequest import OpenRouterAPIRequest
 from src.APIRequests.GroqAPIRequest import GroqAPI
 from src.JudgementDatasetBuilding import CORRECT_STR, WRONG_STR, MIDWAY_STR
-from src.prompts import PROMPT_LLM_JUDGE
+from src.prompts import PROMPT_LLM_JUDGE_SHORT as PROMPT_LLM_JUDGE
+# from src.prompts import PROMPT_LLM_JUDGE
 
 # --- Configuration ---
 INPUT_CSV: Path = Path("data/judgement_dataset.csv")
 # OUTPUT_CSV: Path = Path("data/API_judges.csv")
-REFERENCE_CSV: Path = Path("data/API_judges.csv")
-OUTPUT_CSV: Path = Path("data/API_Max10_judges.csv")
-# JUDGEMENT_CSV: Path = Path("data/API_Explanations.csv")
-JUDGEMENT_CSV: Path = Path("data/API_Explanations_Max10.csv")
+REFERENCE_CSV: Path = Path("data/APICalls/API_judges.csv")
+OUTPUT_CSV: Path = Path("data/APICalls/API_Max1_judges.csv")
+# JUDGEMENT_CSV: Path = Path("data/APICalls/API_Explanations.csv")
+JUDGEMENT_CSV: Path = Path("data/APICalls/API_Explanations_Max1.csv")
 SAMPLE_SIZE: int = 30  # per category
 MAX_RETRIES: int = 3
 RETRY_DELAY: float = 5.0
 COOLDOWN_JUDGE: float = 5.0
 
-MAX_SCORE: int = 10
+MAX_SCORE: int = 1
 MIN_SCORE: int = 0
-DEFAULT_SCORE: int = 8
+DEFAULT_SCORE: int = 0.8
 
 # --- Judges to invoke (fill manually) ---
 # Each entry is an APICall instance.
@@ -41,15 +42,15 @@ judges: dict[Model, APICall] = {
     Model.GPT : GroqAPI(Model.GPT)
 }
 
-def parse_response(raw_response: str) -> tuple[int, str]:
+def parse_response(raw_response: str) -> tuple[float, str]:
     """Extracts Decision and Explanation from the raw API response."""
     # Find Decision
-    score = -1
+    score = -1.0
     # This allows things like "**Decision:**", "Decision :", or "Decision: The score is 100"
-    score_match = re.search(r"(?i)Decision[^\d]*(\d+)", raw_response)
+    score_match = re.search(r"(?i)Decision[^\d]*(\d+(?:\.\d+)?)", raw_response)
     if score_match:
         try:
-            score = int(score_match.group(1))
+            score = float(score_match.group(1))
         except ValueError:
             pass
             
@@ -67,7 +68,7 @@ def getPrompts(original_prompt: str) -> tuple[str, str]:
     question_template = "-------- CONTEXT START --------\n" + prompt_parts[1].strip()
     return system_prompt, question_template
 
-def interrogateJudge(judge: APICall, system_prompt: str, formatted_question: str) -> tuple[int, str]:
+def interrogateJudge(judge: APICall, system_prompt: str, formatted_question: str) -> tuple[float, str]:
     for attempt in range(MAX_RETRIES):
         try:
             raw_response = judge.call(question=formatted_question, system=system_prompt)
@@ -80,15 +81,15 @@ def interrogateJudge(judge: APICall, system_prompt: str, formatted_question: str
                 time.sleep(RETRY_DELAY)
             else:
                 print(f"\nFailed again: {e}")
-                return -1, f"API_ERROR: {e}"
-    return -1, "Unknown Error"
+                return -1.0, f"API_ERROR: {e}"
+    return -1.0, "Unknown Error"
 
-def calculate_delta(human_score: int, model_score: int, max_score: int = MAX_SCORE) -> float:
+def calculate_delta(human_score: int, model_score: float, max_score: int = MAX_SCORE) -> float:
     """Calculates the delta by scaling the 0-100 human score to the current max_score."""
     scaled_human = (human_score / 100.0) * max_score
     return round(model_score - scaled_human, 2)
 
-def saveJudge(df_scores: pd.DataFrame, df_exps: pd.DataFrame, score: int, explanation: str, human_score: int, idx_row: int, idx_exp: int, idx_judge: int) -> None:
+def saveJudge(df_scores: pd.DataFrame, df_exps: pd.DataFrame, score: float, explanation: str, human_score: int, idx_row: int, idx_exp: int, idx_judge: int) -> None:
     score_col = f"Judge {idx_judge} Numeric Score"
     exp_col = f"Judge {idx_judge} Explanation"
     delta_col = f"Judge {idx_judge} delta score"

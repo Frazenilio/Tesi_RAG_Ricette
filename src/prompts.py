@@ -99,14 +99,15 @@ PROMPT_LLM_JUDGE = \
     - If the Provided Answer differs from the closest matching Reference Answer, explicitly describe the differences by stating which elements were added, removed, or changed relative to that Reference Answer.
     Since the topic of the Question and the Answers are about food and recipes, the correctness should NOT take into account common tastes or the actual correctness to original recipes but rather if the Provided Answer matches as closesly as possible one of the Reference Answers OR, in case it matches more than one Reference Answers, if this union makes sense (e.g.: no duplicate elements of the list, coehernt steps) and it the Provided Answer no longer seems human (e.g.: the answer start repeating one or more elements of the list with no logic sense).
     Additional Details and implied errors based on this particular field:
-    - Any Provided Answer should start with "The ingredients of X are: " or "The directions of X are: " based on the Question where X is the recipe name. If a Provided Answer has multiple "The ingredients/directions of X are: " then almost certainly the answer copied two (or more) answera without thinking on how to unite them which is NOT good. If the Provided Answer does not start with this, it is not a reason to decrease score but the list should still be verified to be correct;
+    - Any Provided Answer should start with "The ingredients of X are: " or "The directions of X are: " based on the Question where X is the recipe name. If a Provided Answer has multiple "The ingredients/directions of X are: " then almost certainly the answer copied two (or more) answers without thinking on how to unite them which is NOT good. If the Provided Answer does not start with this, it is not a reason to decrease score but the list should still be verified to be correct;
     - The Provided Answer should strictly answer to the Question: if the Question asks about directions, the Provided Answer should NOT answer with a list of ingredients.
-    - The Provided Answer can be simple as long as it is correct and the score should NOT be reduced even if the Provided Answer lacks some unnecessary details that other Reference Answers have. E.g.: The Provied Answer copied a Reference Answer A but Reference Answer B contained extra details (ex.: more ignredients or extra direction steps), in this case the score shouldn't be penalized by the fact that Reference Answer B may be better or more complete.
+    - The Provided Answer can be simple as long as it is correct and the score should NOT be reduced even if the Provided Answer lacks some unnecessary details that other Reference Answers have. E.g.: The Provied Answer copied a Reference Answer A but Reference Answer B contained extra details (ex.: more ingredients or extra direction steps), in this case the score shouldn't be penalized by the fact that Reference Answer B may be better or more complete.
     - Never judge whether an ingredient or cooking step is correct because of real-world recipe knowledge. Every criticism must be justified only by comparison with the Reference Answers.
     Provide a BRIEF explanation for your decision, highlighting where the errors have been made if any present.
 
     Each point must describe one concrete difference between the Provided Answer and the closest matching Reference Answer.
     Every point in the explanation must be justified only by comparison with the Reference Answers. Do not justify differences using external recipe knowledge.
+    Given the small range of evaluations, you are allowed to use up to 1 decimal digit.
 
     -------- CONTEXT START -------- 
     --- QUESTION ---
@@ -121,7 +122,45 @@ PROMPT_LLM_JUDGE = \
     -------- CONTEXT END --------
 
     --- OUTPUT FORMAT ---
-    Decision: [{min_score}-{max_score} Score]
+    Decision: [Your Score]
+    Explanation: [Your Explanation]
+    """
+
+PROMPT_LLM_JUDGE_SHORT = \
+    """
+    You are an impartial judge. Your task is to evaluate a Provided Answer against Reference Answers.
+    Score from {min_score} to {max_score} based on logical match to AT LEAST ONE Reference Answer. 
+    Multiple Reference Answers do not increase or decrease the score.
+
+    SCORING RULES:
+    - Exact copy (ignoring minor grammar/formatting): Score {max_score}. Explanation must be exactly: "- No operations needed."
+    - Very different / lacks sense: Score near {min_score}.
+    - Score {default_score} is strictly PROHIBITED.
+    - You are allowed to use up to 1 decimal digit (e.g., 0.5, 0.8).
+    
+    EVALUATION GUIDELINES:
+    - If it differs from all Reference Answers, check if it's a logically coherent combination of them. Do NOT use external recipe knowledge.
+    - If it differs from the closest Reference Answer, explicitly state what was added, removed, or changed.
+    - Answers must start with "The ingredients of X are: " or "The directions of X are: ". If an answer concatenates multiple of these prefixes, it implies a mindless copy-paste (verify logic).
+    - If the Question asks for ingredients, do NOT accept directions, and vice versa.
+    - Shorter Provided Answers are fully correct as long as they don't omit necessary logic; don't penalize just because a Reference Answer has extra optional details.
+
+    Provide a BRIEF explanation. Each point must describe one concrete difference using ONLY the Reference Answers, never external knowledge.
+
+    -------- CONTEXT START -------- 
+    --- QUESTION ---
+    {prompted_query}
+    
+    --- PROVIDED ANSWER ---
+    {llm_rag_answer}
+    
+    --- REFERENCE ANSWERS ---
+    {correct_answers}
+
+    -------- CONTEXT END --------
+
+    --- OUTPUT FORMAT ---
+    Decision: [Your Score]
     Explanation: [Your Explanation]
     """
 
