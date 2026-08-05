@@ -2,6 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
+import numpy as np
+import os
 
 # Paths (relative to this script)
 ROOT_DIR = Path(__file__).parent.parent
@@ -129,5 +131,271 @@ def main():
         # We don't call plt.show() here to prevent the script from pausing mid-loop
         plt.close()
 
+def plot_score_variation():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    api_calls_dir = os.path.join(current_dir, '..', 'data', "APICalls")
+    
+    # Dictionary mapping filename to its max score for scaling
+    CSV_FILES_AND_MAX = {
+        "API_Max1_judges.csv": 1,
+        "API_Max10_judges.csv": 10,
+        "API_Max100_judges.csv": 100
+    }
+    
+    OUTPUT_PLOT_DIR = os.path.join(current_dir, '..', 'data', 'ScaleDifferencePlots')
+    os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
+    
+    # judge_data[model_name][original_row] = [scaled_score1, scaled_score2, ...]
+    judge_data = {}
+    
+    for filename, max_score in CSV_FILES_AND_MAX.items():
+        csv_path = os.path.join(api_calls_dir, filename)
+        if not os.path.exists(csv_path):
+            print(f"Skipping {filename}: File not found.")
+            continue
+            
+        df = pd.read_csv(csv_path)
+        
+        if "original_row" not in df.columns:
+            df["original_row"] = df.index + 2
+            
+        for i in range(1, 5):
+            model_col = f'Judge {i} Model Name'
+            num_col = f'Judge {i} Numeric Score'
+            
+            if model_col in df.columns and num_col in df.columns:
+                for _, row in df.iterrows():
+                    model_name = row[model_col]
+                    raw_score = row[num_col]
+                    row_idx = row["original_row"]
+                    
+                    if pd.isna(model_name) or raw_score == -1:
+                        continue
+                        
+                    try:
+                        scaled_score = (float(raw_score) / max_score) * 100.0
+                    except (ValueError, TypeError):
+                        continue
+                        
+                    if model_name not in judge_data:
+                        judge_data[model_name] = {}
+                    if row_idx not in judge_data[model_name]:
+                        judge_data[model_name][row_idx] = []
+                        
+                    judge_data[model_name][row_idx].append(scaled_score)
+                    
+    # Now calculate metrics
+    ## https://en.wikipedia.org/wiki/Coefficient_of_variation
+    plot_data_cv = []
+    plot_data_sd = []
+    avg_spreads = {}
+    
+    for model_name, rows in judge_data.items():
+        cvs = []
+        spreads = []
+        sds = []
+        
+        for row_idx, scores in rows.items():
+            if len(scores) == len(CSV_FILES_AND_MAX): # Only include if judge scored it in ALL files
+                mean_score = np.mean(scores)
+                std_dev = np.std(scores) 
+                
+                cv = (std_dev / mean_score) if mean_score > 0 else 0
+                spread = np.max(scores) - np.min(scores)
+                
+                cvs.append(cv)
+                spreads.append(spread)
+                sds.append(std_dev)
+                
+                plot_data_cv.append({"Judge": model_name, "CV": cv})
+                plot_data_sd.append({"Judge": model_name, "SD": std_dev})
+                
+        if len(cvs) > 0:
+            avg_spreads[model_name] = np.mean(spreads)
+            
+    if not plot_data_cv:
+        print("No valid data to plot.")
+        return
+        
+    df_cv = pd.DataFrame(plot_data_cv)
+    df_sd = pd.DataFrame(plot_data_sd)
+    
+    try:
+        import seaborn as sns
+        sns.set_theme(style="whitegrid")
+    except ImportError:
+        pass
+        
+    # Plot 1: Boxplot of CVs
+    plt.figure(figsize=(10, 6))
+    if 'seaborn' in sys.modules:
+        sns.boxplot(x="Judge", y="CV", hue="Judge", data=df_cv, palette="Set2", legend=False)
+    else:
+        df_cv.boxplot(column="CV", by="Judge", grid=True, figsize=(10, 6), ax=plt.gca())
+        plt.suptitle("")
+        
+    plt.title("Score Volatility: Coefficient of Variation (CV) Distribution per Judge", fontsize=14)
+    plt.ylabel("Coefficient of Variation (SD / Mean)", fontsize=12)
+    plt.xlabel("Judge (Model)", fontsize=12)
+    plt.tight_layout()
+    cv_plot_path = os.path.join(OUTPUT_PLOT_DIR, "CoefficientOfVariation_Boxplot.png")
+    plt.savefig(cv_plot_path, dpi=300)
+    plt.close()
+    
+    # Plot 1.5: Boxplot of SDs
+    plt.figure(figsize=(10, 6))
+    if 'seaborn' in sys.modules:
+        sns.boxplot(x="Judge", y="SD", hue="Judge", data=df_sd, palette="Set2", legend=False)
+    else:
+        df_sd.boxplot(column="SD", by="Judge", grid=True, figsize=(10, 6), ax=plt.gca())
+        plt.suptitle("")
+        
+    plt.title("Score Volatility: Standard Deviation Distribution per Judge", fontsize=14)
+    plt.ylabel("Standard Deviation", fontsize=12)
+    plt.xlabel("Judge (Model)", fontsize=12)
+    plt.tight_layout()
+    sd_plot_path = os.path.join(OUTPUT_PLOT_DIR, "StandardDeviation_Boxplot.png")
+    plt.savefig(sd_plot_path, dpi=300)
+    plt.close()
+    
+    # Plot 2: Bar chart of Avg Spread
+    plt.figure(figsize=(10, 6))
+    judges = list(avg_spreads.keys())
+    spread_vals = list(avg_spreads.values())
+    
+    if 'seaborn' in sys.modules:
+        sns.barplot(x=judges, y=spread_vals, hue=judges, palette="Set3", legend=False)
+    else:
+        plt.bar(judges, spread_vals, color='skyblue')
+        
+    plt.title("Average Score Spread (Max - Min) per Judge across scales", fontsize=14)
+    plt.ylabel("Average Spread (%)", fontsize=12)
+    plt.xlabel("Judge (Model)", fontsize=12)
+    if spread_vals:
+        plt.ylim(0, max(spread_vals) * 1.2) # Give 20% headroom
+    plt.tight_layout()
+    spread_plot_path = os.path.join(OUTPUT_PLOT_DIR, "AverageSpread_BarChart.png")
+    plt.savefig(spread_plot_path, dpi=300)
+    plt.close()
+    
+    print(f"\nPlots successfully saved to:\n- {os.path.abspath(cv_plot_path)}\n- {os.path.abspath(sd_plot_path)}\n- {os.path.abspath(spread_plot_path)}")
+
+def plot_coherence_accuracy():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    api_calls_dir = os.path.join(current_dir, '..', 'data', "APICalls")
+    judgement_csv = os.path.join(current_dir, '..', 'data', 'judgement_dataset.csv')
+    coherence_csv = os.path.join(api_calls_dir, 'API_Coherence_judges.csv')
+    
+    OUTPUT_PLOT_DIR = os.path.join(current_dir, '..', 'data', 'ScaleDifferencePlots')
+    os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
+    
+    if not os.path.exists(coherence_csv) or not os.path.exists(judgement_csv):
+        print("Missing required CSV files for coherence accuracy.")
+        return
+        
+    df_coh = pd.read_csv(coherence_csv)
+    df_judge = pd.read_csv(judgement_csv)
+    df_judge["original_row"] = df_judge.index + 2
+    
+    # Merge on original_row to bring in the True Human Correctness string
+    df_merged = pd.merge(df_coh, df_judge[["original_row", "Human Correctness"]], on="original_row", how="inner")
+    
+    accuracies = {}
+    distribution_data = []
+    
+    for i in range(1, 5):
+        model_col = f'Judge {i} Model Name'
+        eval_col = f'Judge {i} Evaluation'
+        
+        if model_col in df_merged.columns and eval_col in df_merged.columns:
+            model_names = df_merged[model_col].dropna().unique()
+            if len(model_names) == 0: continue
+            model_name = model_names[0]
+            
+            valid_rows = df_merged[df_merged[eval_col].notna() & (df_merged[eval_col] != "ERROR")].copy()
+            
+            if len(valid_rows) == 0:
+                continue
+                
+            # Normalize strings for comparison
+            valid_rows[eval_col] = valid_rows[eval_col].str.strip().str.lower()
+            valid_rows["Human Correctness"] = valid_rows["Human Correctness"].str.strip().str.lower().str.replace("midway correct", "midway")
+            
+            matches = (valid_rows[eval_col] == valid_rows["Human Correctness"])
+            accuracies[model_name] = matches.mean() * 100.0
+            
+            # For distribution plot
+            counts = valid_rows[eval_col].value_counts().to_dict()
+            distribution_data.append({
+                "Judge": model_name,
+                "Correct": counts.get("correct", 0),
+                "Midway": counts.get("midway", 0),
+                "Wrong": counts.get("wrong", 0)
+            })
+            
+    if not accuracies:
+        print("No valid coherence data to plot.")
+        return
+        
+    try:
+        import seaborn as sns
+    except ImportError:
+        pass
+        
+    # Plot 1: Accuracy Bar Chart
+    plt.figure(figsize=(10, 6))
+    judges = list(accuracies.keys())
+    acc_vals = list(accuracies.values())
+    
+    if 'seaborn' in sys.modules:
+        sns.barplot(x=judges, y=acc_vals, hue=judges, palette="Set1", legend=False)
+    else:
+        plt.bar(judges, acc_vals, color='lightgreen')
+        
+    plt.title("Coherence Evaluation Accuracy per Judge (vs Human)", fontsize=14)
+    plt.ylabel("Accuracy (%)", fontsize=12)
+    plt.xlabel("Judge (Model)", fontsize=12)
+    plt.ylim(0, 100)
+    
+    # Add values on top of bars
+    for idx, val in enumerate(acc_vals):
+        plt.text(idx, val + 1, f"{val:.1f}%", ha='center', fontsize=10)
+        
+    plt.tight_layout()
+    
+    acc_plot_path = os.path.join(OUTPUT_PLOT_DIR, "CoherenceAccuracy_BarChart.png")
+    plt.savefig(acc_plot_path, dpi=300)
+    plt.close()
+    
+    # Plot 2: Distribution Stacked Bar Chart
+    df_dist = pd.DataFrame(distribution_data).set_index("Judge")
+    
+    # Add human baseline distribution
+    human_labels = df_merged["Human Correctness"].str.strip().str.lower().str.replace("midway correct", "midway")
+    human_counts = human_labels.value_counts().to_dict()
+    df_dist.loc["HUMAN (Baseline)"] = {
+        "Correct": human_counts.get("correct", 0),
+        "Midway": human_counts.get("midway", 0),
+        "Wrong": human_counts.get("wrong", 0)
+    }
+    
+    colors = ["#4CAF50", "#FFC107", "#F44336"] # Green, Yellow, Red
+    df_dist[["Correct", "Midway", "Wrong"]].plot(kind='bar', stacked=True, figsize=(10, 6), color=colors)
+    
+    plt.title("Distribution of Coherence Labels (Judges vs Human)", fontsize=14)
+    plt.ylabel("Number of Recipes", fontsize=12)
+    plt.xlabel("Judge / Baseline", fontsize=12)
+    plt.xticks(rotation=0)
+    plt.legend(title="Label", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    
+    dist_plot_path = os.path.join(OUTPUT_PLOT_DIR, "CoherenceDistribution_StackedBar.png")
+    plt.savefig(dist_plot_path, dpi=300)
+    plt.close()
+    
+    print(f"\nPlots successfully saved to:\n- {os.path.abspath(acc_plot_path)}\n- {os.path.abspath(dist_plot_path)}")
+
 if __name__ == "__main__":
     main()
+    plot_score_variation()
+    plot_coherence_accuracy()

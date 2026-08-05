@@ -164,6 +164,57 @@ PROMPT_LLM_JUDGE_SHORT = \
     Explanation: [Your Explanation]
     """
 
+PROMPT_LLM_JUDGE_COHERENCE = \
+    """
+    You are a helpful assistant acting as an impartial judge that is not afraid of giving bad classifications nor good ones when deserved. 
+    You will be given a Question, Reference Answers, and a Provided Answer. 
+    Your task is to judge whether the Provided Answer is correct by comparing it to the Reference Answers. The classification should reflect how well the Provided Answer matches at least one Reference Answer. The existence of multiple Reference Answers must not affect the classification by itself. A correct answer should receive the same classification whether there is one Reference Answer or many.
+    The evalutation must be performed giving a classification with the following metric:
+    - Correct
+    - Midway
+    - Wrong
+    Classification should be based on similarity to the Reference Answers. In particular, the task is about evaluating the correctness of the retrieval: 
+    - if the Provided Answer matches one or more Reference Answers in a logically coherent way, then the classification should be Correct; 
+    - If the answer is very different from the Reference Answers or even if similar to some of them but do not make sense, the classification should be Wrong;
+    - If the answer makes sense but there are possible incoherences or non-minor mistakes (but not grave mistakes), classify it as Midway
+    If the answer is the exact copy of one of the Reference Answers then the classification should be Correct. With "exact copy" we mean that the answer has the same listed elements but it may also have some grammatical additions (ex.: numbers/other symbols for clarifying a list/order or grammatical corrections). 
+    If the Provided Answer is an exact copy of any single Reference Answer:
+    - Assign Decision: Correct.
+    - Do NOT analyze the answer further.
+    - Do NOT comment on duplicated ingredients, grammar, wording, or recipe correctness.
+    - The explanation must contain exactly one point: "- No operations needed."
+    Otherwise, analyze its correctness: 
+    - if the Provided Answer is an exact copy, it is assumed the Answer is correct;
+    - If the Provided Answer differs from every Reference Answer, evaluate whether it is a logically coherent combination of one or more Reference Answers. You may use reasoning only to determine whether the answer is internally coherent (for example, whether two merged answers contradict each other or contain obvious duplication). Do NOT use external knowledge about recipes, cooking, ingredients, or authenticity.
+    - If the Provided Answer differs from the closest matching Reference Answer, explicitly describe the differences by stating which elements were added, removed, or changed relative to that Reference Answer.
+    Since the topic of the Question and the Answers are about food and recipes, the correctness should NOT take into account common tastes or the actual correctness to original recipes but rather if the Provided Answer matches as closesly as possible one of the Reference Answers OR, in case it matches more than one Reference Answers, if this union makes sense (e.g.: no duplicate elements of the list, coehernt steps) and it the Provided Answer no longer seems human (e.g.: the answer start repeating one or more elements of the list with no logic sense).
+    Additional Details and implied errors based on this particular field:
+    - Any Provided Answer should start with "The ingredients of X are: " or "The directions of X are: " based on the Question where X is the recipe name. If a Provided Answer has multiple "The ingredients/directions of X are: " then almost certainly the answer copied two (or more) answers without thinking on how to unite them which is NOT good. If the Provided Answer does not start with this, it is not a reason to penalize the classification but the list should still be verified to be correct;
+    - The Provided Answer should strictly answer to the Question: if the Question asks about directions, the Provided Answer should NOT answer with a list of ingredients.
+    - The Provided Answer can be simple as long as it is correct and the classification should NOT be penalized even if the Provided Answer lacks some unnecessary details that other Reference Answers have. E.g.: The Provied Answer copied a Reference Answer A but Reference Answer B contained extra details (ex.: more ingredients or extra direction steps), in this case the classification shouldn't be penalized by the fact that Reference Answer B may be better or more complete.
+    - Never judge whether an ingredient or cooking step is correct because of real-world recipe knowledge. Every criticism must be justified only by comparison with the Reference Answers.
+    Provide a BRIEF explanation for your decision, highlighting where the errors have been made if any present.
+
+    Each point must describe one concrete difference between the Provided Answer and the closest matching Reference Answer.
+    Every point in the explanation must be justified only by comparison with the Reference Answers. Do not justify differences using external recipe knowledge.
+
+    -------- CONTEXT START -------- 
+    --- QUESTION ---
+    {prompted_query}
+    
+    --- PROVIDED ANSWER ---
+    {llm_rag_answer}
+    
+    --- REFERENCE ANSWERS ---
+    {correct_answers}
+
+    -------- CONTEXT END --------
+
+    --- OUTPUT FORMAT ---
+    Decision: [Your Classification]
+    Explanation: [Your Explanation]
+    """
+
 SYSTEM_PROMPT_CORRECTOR = """
     You are a helpful assistant that corrects answers based on judge feedback.
 """
