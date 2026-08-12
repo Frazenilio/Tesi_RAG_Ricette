@@ -186,6 +186,7 @@ def plot_score_variation():
                     
     # Now calculate metrics
     ## https://en.wikipedia.org/wiki/Coefficient_of_variation
+    ## Dev std / avg --> lower avg, bigger number compared to dev std
     plot_data_cv = []
     plot_data_sd = []
     avg_spreads = {}
