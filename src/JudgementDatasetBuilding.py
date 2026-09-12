@@ -9,10 +9,13 @@ sys.path.append(str(Path(__file__).parent.parent))
 from src.metrics import compute_iou_stats
 
 # --- Configuration ---
-TARGET_FOLDER = Path(r"C:\Users\Franc\Documents\UniBS\Tesi\Tesi_RAG_Ricette\results\2026-07-17T10-32-24")
-# TARGET_FOLDER = Path(r"C:\Users\Franc\Documents\UniBS\Tesi\Tesi_RAG_Ricette\results\2026-07-15T11-32-35_START_DS")
-DROP_EXISTING_DATASET = False
-OUTPUT_CSV = Path(r"C:\Users\Franc\Documents\UniBS\Tesi\Tesi_RAG_Ricette\data\judgement_dataset.csv")
+ROOT_DIR = Path(__file__).parent.parent
+TARGET_FOLDERS = [
+    ROOT_DIR / "results" / "2026-07-15T11-32-35_START_DS",
+    ROOT_DIR / "results" / "2026-07-17T10-32-24",
+]
+DROP_EXISTING_DATASET = True
+OUTPUT_CSV = ROOT_DIR / "data" / "judgement_dataset.csv"
 
 # --- Constants ---
 CORRECT_STR = "correct"
@@ -76,12 +79,13 @@ def build_dataset():
             
         rows_processed = 0
 
-        for root, _, files in os.walk(TARGET_FOLDER):
-            for file in files:
-                if not file.endswith(".json"):
-                    continue
-                
-                filepath = os.path.join(root, file)
+        for folder in TARGET_FOLDERS:
+            for root, _, files in sorted(os.walk(folder)):
+                for file in sorted(files):
+                    if not file.endswith(".json"):
+                        continue
+                    
+                    filepath = os.path.join(root, file)
                 
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:

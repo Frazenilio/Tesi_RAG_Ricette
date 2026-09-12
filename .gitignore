@@ -3,6 +3,7 @@ results/
 *.cpython-314.pyc
 *.tex
 src/__pycache__/
+Pipelines
 GroqKEY.txt
 OpenRouterKEY.txt
 labeler_exe

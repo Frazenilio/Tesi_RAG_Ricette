@@ -113,7 +113,7 @@ def prepare_generation_cases(
                 if use_oracle:
                     context_indices = [int(i) for i in correct_indices]
                     context_chunks = correct_chunks
-                    context = "\n\n".join(context_chunks)
+                    context = "\n".join(context_chunks)
                 elif current_index is not None:
                     # Use FAISS to retrieve the context, setting k = len(correct_indices)
                     retrieved_ids, retrieved_chunks, context = retrieve(

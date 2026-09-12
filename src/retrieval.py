@@ -43,11 +43,11 @@ def retrieve(
     _, raw_indices = index.search(query_embedding, k)
     indices = raw_indices[0]
     correct_chunks = [global_chunks[i] for i in indices if i in correct_indices]
-    context = " ".join(global_chunks[i] for i in indices)
+    context = "\n".join(global_chunks[i] for i in indices)
     return indices, correct_chunks, context
 
 
 def retrieve_oracle(global_chunks: list, correct_indices: list) -> tuple:
     correct_chunks = [global_chunks[i] for i in correct_indices]
-    context = " ".join(correct_chunks)
+    context = "\n".join(correct_chunks)
     return correct_chunks, context
