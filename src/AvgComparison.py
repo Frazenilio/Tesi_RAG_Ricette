@@ -21,46 +21,104 @@ except ImportError:
     irr = None
 
 def human_difference():
-    # Construct the path to the CSV file
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(current_dir, '..', 'data', "APICalls", 'API_Max1_judges.csv')
+    api_calls_dir = os.path.join(current_dir, '..', 'data', "APICalls")
     
-    # Read the CSV
-    df = pd.read_csv(csv_path)
+    CSV_FILES_AND_MAX = {
+        "API_Max1_judges.csv": 1.0,
+        "API_Max10_judges.csv": 10.0,
+        "API_Max100_judges.csv": 100.0
+    }
     
-    # We will collect the deltas for each judge name (model name)
-    judge_stats = {}
+    scale_results = {}
     
-    for i in range(1, 5):
-        model_col = f'Judge {i} Model Name'
-        delta_col = f'Judge {i} delta score'
-        num_col = f'Judge {i} Numeric Score'
+    for filename, max_score in CSV_FILES_AND_MAX.items():
+        csv_path = os.path.join(api_calls_dir, filename)
+        if not os.path.exists(csv_path):
+            print(f"Skipping {filename}: File not found.")
+            continue
+            
+        df = pd.read_csv(csv_path)
+        judge_stats = {}
         
-        if model_col in df.columns and delta_col in df.columns:
-            for idx, row in df.iterrows():
-                model_name = row[model_col]
-                delta_val = row[delta_col]
-                
-                if row[num_col] == -1:
-                    print("Skipping value")
-                if pd.isna(model_name):
-                    continue
+        for i in range(1, 5):
+            model_col = f'Judge {i} Model Name'
+            delta_col = f'Judge {i} delta score'
+            num_col = f'Judge {i} Numeric Score'
+            
+            if model_col in df.columns and delta_col in df.columns:
+                for idx, row in df.iterrows():
+                    model_name = row[model_col]
+                    raw_score = row[num_col]
+                    delta_val = row[delta_col]
                     
-                # Convert delta to numeric
-                try:
-                    delta_val = float(delta_val)
-                except:
-                    delta_val = np.nan
-                
-                if not pd.isna(delta_val):
-                    if model_name not in judge_stats:
-                        judge_stats[model_name] = []
-                    judge_stats[model_name].append(delta_val)
-                    
-    print("\n--- Average delta score per judge ---")
-    for model_name, deltas in judge_stats.items():
-        avg_delta = np.mean(deltas)
-        print(f"{model_name}: {avg_delta:.4f} (based on {len(deltas)} values)")
+                    if pd.isna(model_name) or raw_score == -1:
+                        continue
+                        
+                    model_name = str(model_name).upper().strip()
+                    try:
+                        delta_num = float(delta_val)
+                    except (ValueError, TypeError):
+                        continue
+                        
+                    if not pd.isna(delta_num):
+                        if model_name not in judge_stats:
+                            judge_stats[model_name] = {
+                                "raw": [],
+                                "norm": [],
+                                "abs_raw": [],
+                                "abs_norm": []
+                            }
+                        judge_stats[model_name]["raw"].append(delta_num)
+                        judge_stats[model_name]["norm"].append(delta_num / max_score)
+                        judge_stats[model_name]["abs_raw"].append(abs(delta_num))
+                        judge_stats[model_name]["abs_norm"].append(abs(delta_num) / max_score)
+                        
+        scale_results[filename] = (max_score, judge_stats)
+        
+        print(f"\n--- Delta Scores Breakdown ({filename} | Scale 0-{int(max_score)}) ---")
+        for model_name in sorted(judge_stats.keys()):
+            stats = judge_stats[model_name]
+            raw_signed = np.mean(stats["raw"])
+            norm_signed = np.mean(stats["norm"])
+            raw_abs = np.mean(stats["abs_raw"])
+            norm_abs = np.mean(stats["abs_norm"])
+            n = len(stats["raw"])
+            print(f"  {model_name:<6}: "
+                  f"Raw Delta = {raw_signed:+.3f} (Abs: {raw_abs:.3f}) | "
+                  f"Norm Delta (0-1) = {norm_signed:+.4f} ({norm_signed*100:+.2f}%) | "
+                  f"Abs Norm = {norm_abs:.4f} ({norm_abs*100:.2f}%) [n={n}]")
+
+    # Summary table across all scales
+    all_models = sorted(list({m for _, (_, stats) in scale_results.items() for m in stats.keys()}))
+    
+    print("\n" + "="*84)
+    print("--- Summary: Normalized Signed Delta (LLM - Human) Across Scales ---")
+    print(f"{'Judge':<8} | {'Max 1 (0-1)':<20} | {'Max 10 (0-10)':<20} | {'Max 100 (0-100)':<20}")
+    print("-" * 84)
+    for model in all_models:
+        row_str = f"{model:<8} | "
+        for fname in ["API_Max1_judges.csv", "API_Max10_judges.csv", "API_Max100_judges.csv"]:
+            if fname in scale_results and model in scale_results[fname][1]:
+                norm_d = np.mean(scale_results[fname][1][model]["norm"])
+                row_str += f"{norm_d:+.4f} ({norm_d*100:+.2f}%)     | "
+            else:
+                row_str += f"{'N/A':<20} | "
+        print(row_str.rstrip(" |"))
+
+    print("\n--- Summary: Normalized Absolute Delta |LLM - Human| Across Scales ---")
+    print(f"{'Judge':<8} | {'Max 1 (0-1)':<20} | {'Max 10 (0-10)':<20} | {'Max 100 (0-100)':<20}")
+    print("-" * 84)
+    for model in all_models:
+        row_str = f"{model:<8} | "
+        for fname in ["API_Max1_judges.csv", "API_Max10_judges.csv", "API_Max100_judges.csv"]:
+            if fname in scale_results and model in scale_results[fname][1]:
+                abs_norm_d = np.mean(scale_results[fname][1][model]["abs_norm"])
+                row_str += f"{abs_norm_d:.4f} ({abs_norm_d*100:.2f}%)      | "
+            else:
+                row_str += f"{'N/A':<20} | "
+        print(row_str.rstrip(" |"))
+    print("="*84)
 
 def score_variation():
     current_dir = os.path.dirname(os.path.abspath(__file__))

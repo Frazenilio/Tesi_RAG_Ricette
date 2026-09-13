@@ -388,7 +388,7 @@ PROMPT_ANSWER_CORRECTOR = \
         }}
     ]
     Where "correction" is the action to apply in order to edit the OA and "status" is the status of such correction. 
-    The "status" has 2 possible values, here defined with explanation:
+    The "status" has 3 possible values, here defined with explanation:
     - "Confirmed": This status is assigned when the correction is confirmed to be implemented and no other judgement contraddicted it so implement it without thinking about it;
     - "Proposed": This status is assigned when the correction has been proposed by one evaluation but no other evalutations stated it may be applied only if it can be verified directly from the Original Answer (e.g., duplicated items, repeated prefixes, obvious formatting issues). A "Proposed" correction may be applied only if the need for that edit can be verified directly from the Original Answer itself. If the Original Answer does not objectively demonstrate the problem, ignore the correction.
     - "Disputed": This status is assigned when a correction is not certain to be implemented so apply only if the correction follows directly from the Original Answer itself (e.g. duplicate words, repeated prefix, formatting issues). Otherwise leave the Original Answer unchanged.

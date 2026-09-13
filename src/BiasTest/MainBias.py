@@ -15,14 +15,17 @@ from src.BiasTest.extract_base_retrievals import (
 )
 from src.BiasTest.position_bias import run_position_bias, DEFAULT_SAVE_FOLDER
 from src.BiasTest.self_enchantment_bias import run_self_enchantment_bias
+from src.BiasTest.compassion_fade_bias import run_compassion_fade_bias
+from src.BiasTest.length_bias import run_length_bias
 
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 
 SUPPORTED_BIASES = {
+    "all": "Runs all implemented bias tests sequentially (position, self-enchantment, compassion-fade, length).",
     "position": "Tests RAG generation under shuffled context order (Manual inspection output).",
     "self-enchantment": "Tests if judge scores its own generated answers higher than other models.",
-    "length": "Planned - Manual length variations.",
-    "compassion-fade": "Planned - Evaluation of AI vs Human attribution tags."
+    "length": "Analyzes whether judges systematically award higher scores to the longest answers (from dataset).",
+    "compassion-fade": "Tests if judge evaluation shifts when answer is attributed to AI vs Human vs Neutral."
 }
 
 def check_ollama(host: str = DEFAULT_OLLAMA_HOST) -> bool:
@@ -82,10 +85,22 @@ Examples:
   # Run Self-Enchantment Bias (Dry Run or Live)
   python src/BiasTest/MainBias.py --run self-enchantment --judge both --dry-run --save-file results/bias_tests
   python src/BiasTest/MainBias.py --run self-enchantment --judge llama --save-file results/bias_tests
+
+  # Run Compassion-Fade / Attribution Bias (Dry Run or Live)
+  python src/BiasTest/MainBias.py --run compassion-fade --judge both --target-response llama --dry-run --save-file results/bias_tests
+  python src/BiasTest/MainBias.py --run compassion-fade --judge llama --target-response both --save-file results/bias_tests
+
+  # Run Length / Verbosity Bias analysis
+  python src/BiasTest/MainBias.py --run length --save-file results/bias_tests
+
+  # Run ALL bias tests sequentially (Dry Run or Live)
+  python src/BiasTest/MainBias.py --run all --dry-run --save-file results/bias_tests
+  python src/BiasTest/MainBias.py --run all --judge both --target-response llama --save-file results/bias_tests
         """
     )
-    parser.add_argument("--run", type=str, default=None, help="Name of the bias to test (e.g. 'position', 'self-enchantment')")
-    parser.add_argument("--judge", type=str, default="both", choices=["llama", "gemma", "both"], help="Judge model for Self-Enchantment test")
+    parser.add_argument("--run", type=str, default=None, help="Name of the bias to test ('position', 'self-enchantment', 'compassion-fade', 'length', or 'all')")
+    parser.add_argument("--judge", type=str, default="both", choices=["llama", "gemma", "both"], help="Judge model to test ('llama', 'gemma', 'both')")
+    parser.add_argument("--target-response", type=str, default="llama", choices=["llama", "gemma", "both"], help="Response set to evaluate for compassion-fade bias ('llama', 'gemma', or 'both')")
     parser.add_argument("--save-file", type=Path, default=DEFAULT_SAVE_FOLDER, help="Folder path where to save the result JSON")
     parser.add_argument("--ollama_host", type=str, default=DEFAULT_OLLAMA_HOST, help="Ollama server host URL")
     parser.add_argument("--model", type=str, default=None, help="Override LLM model name specified in config.yaml")
@@ -117,6 +132,59 @@ Examples:
                 ollama_host=args.ollama_host,
                 dry_run=args.dry_run
             )
+        elif bias_name in ("compassion-fade", "compassion", "attribution"):
+            print(f"\n--- Starting Bias Test: Compassion-Fade / Attribution Bias ---")
+            run_compassion_fade_bias(
+                judge=args.judge,
+                target_response=args.target_response,
+                save_folder=args.save_file,
+                ollama_host=args.ollama_host,
+                dry_run=args.dry_run
+            )
+        elif bias_name in ("length", "length-bias", "verbosity"):
+            print(f"\n--- Starting Bias Test: Length (Verbosity) Bias ---")
+            run_length_bias(
+                save_folder=args.save_file
+            )
+        elif bias_name == "all":
+            print(f"\n=======================================================")
+            print(f"       RUNNING COMPLETE BIAS TESTING SUITE")
+            print(f"=======================================================")
+
+            print(f"\n>>> [1/4] Running Position Bias...")
+            run_position_bias(
+                save_folder=args.save_file,
+                ollama_host=args.ollama_host,
+                model_override=args.model,
+                dry_run=args.dry_run,
+                seed=args.seed
+            )
+
+            print(f"\n>>> [2/4] Running Self-Enchantment Bias...")
+            run_self_enchantment_bias(
+                judge=args.judge,
+                save_folder=args.save_file,
+                ollama_host=args.ollama_host,
+                dry_run=args.dry_run
+            )
+
+            print(f"\n>>> [3/4] Running Compassion-Fade / Attribution Bias...")
+            run_compassion_fade_bias(
+                judge=args.judge,
+                target_response=args.target_response,
+                save_folder=args.save_file,
+                ollama_host=args.ollama_host,
+                dry_run=args.dry_run
+            )
+
+            print(f"\n>>> [4/4] Running Length (Verbosity) Bias...")
+            run_length_bias(
+                save_folder=args.save_file
+            )
+
+            print(f"\n=======================================================")
+            print(f"   ALL BIAS TESTS COMPLETED SUCCESSFULLY!")
+            print(f"=======================================================")
         else:
             print(f"\nError: Unknown bias '{args.run}'.")
             print("Supported biases:")

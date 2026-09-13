@@ -86,66 +86,66 @@ def build_dataset():
                         continue
                     
                     filepath = os.path.join(root, file)
-                
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        
-                    # Basic validation
-                    if "qa_pairs" not in data or "model" not in data:
-                        continue
-                        
-                    rag_model_name = data["model"]
                     
-                    for pair in data["qa_pairs"]:
-                        row = {}
-                        row["Question"] = pair.get("query", "")
-                        row["Recipe"] = pair.get("recipe_name", "")
-                        row["Asked"] = "directions" if "directions" in pair.get("query", "").lower() else "ingredients"
-                        
-                        # Serialize the list of reference answers to JSON string for CSV safely
-                        correct_answers = pair.get("correct_answers", [])
-                        row["Reference Answers"] = json.dumps(correct_answers)
-                        
-                        row["RAG Model Name"] = rag_model_name
-                        
-                        original_answer = pair.get("original_answer", "")
-                        row["Provided Answer"] = original_answer
-                        
-                        row["IoU Correctness"] = evaluate_iou_correctness(original_answer, correct_answers)
-                        row["Human Correctness"] = evaluate_human_correctness(pair.get("human_score", 0))
-                        
-                        row["Human Numeric Score"] = pair.get("human_score", 0)
-                        row["Human Explanation"] = pair.get("human_explanation", "")
-                        
-                        # Extract judges
-                        round_1 = pair.get("round_1", {})
-                        judges_dict = round_1.get("judges", {})
-                        
-                        # Sort judge model names to ensure deterministic assignment
-                        judge_names = sorted(list(judges_dict.keys()))
-                        
-                        for i in range(1, 4):
-                            judge_model_key = f"Judge {i} Model Name"
-                            judge_score_key = f"Judge {i} Numeric Score"
-                            judge_exp_key = f"Judge {i} Explanation"
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
                             
-                            if i <= len(judge_names):
-                                j_name = judge_names[i-1]
-                                j_data = judges_dict[j_name]
-                                row[judge_model_key] = j_name
-                                row[judge_score_key] = j_data.get("score", "")
-                                row[judge_exp_key] = j_data.get("explanation", "")
-                            else:
-                                row[judge_model_key] = ""
-                                row[judge_score_key] = ""
-                                row[judge_exp_key] = ""
-                                
-                        writer.writerow(row)
-                        rows_processed += 1
+                        # Basic validation
+                        if "qa_pairs" not in data or "model" not in data:
+                            continue
+                            
+                        rag_model_name = data["model"]
                         
-                except Exception as e:
-                    print(f"Error processing {filepath}: {e}")
+                        for pair in data["qa_pairs"]:
+                            row = {}
+                            row["Question"] = pair.get("query", "")
+                            row["Recipe"] = pair.get("recipe_name", "")
+                            row["Asked"] = "directions" if "directions" in pair.get("query", "").lower() else "ingredients"
+                            
+                            # Serialize the list of reference answers to JSON string for CSV safely
+                            correct_answers = pair.get("correct_answers", [])
+                            row["Reference Answers"] = json.dumps(correct_answers)
+                            
+                            row["RAG Model Name"] = rag_model_name
+                            
+                            original_answer = pair.get("original_answer", "")
+                            row["Provided Answer"] = original_answer
+                            
+                            row["IoU Correctness"] = evaluate_iou_correctness(original_answer, correct_answers)
+                            row["Human Correctness"] = evaluate_human_correctness(pair.get("human_score", 0))
+                            
+                            row["Human Numeric Score"] = pair.get("human_score", 0)
+                            row["Human Explanation"] = pair.get("human_explanation", "")
+                            
+                            # Extract judges
+                            round_1 = pair.get("round_1", {})
+                            judges_dict = round_1.get("judges", {})
+                            
+                            # Sort judge model names to ensure deterministic assignment
+                            judge_names = sorted(list(judges_dict.keys()))
+                            
+                            for i in range(1, 4):
+                                judge_model_key = f"Judge {i} Model Name"
+                                judge_score_key = f"Judge {i} Numeric Score"
+                                judge_exp_key = f"Judge {i} Explanation"
+                                
+                                if i <= len(judge_names):
+                                    j_name = judge_names[i-1]
+                                    j_data = judges_dict[j_name]
+                                    row[judge_model_key] = j_name
+                                    row[judge_score_key] = j_data.get("score", "")
+                                    row[judge_exp_key] = j_data.get("explanation", "")
+                                else:
+                                    row[judge_model_key] = ""
+                                    row[judge_score_key] = ""
+                                    row[judge_exp_key] = ""
+                                    
+                            writer.writerow(row)
+                            rows_processed += 1
+                            
+                    except Exception as e:
+                        print(f"Error processing {filepath}: {e}")
                     
     print(f"Successfully processed {rows_processed} QA pairs.")
     print(f"Dataset saved to: {OUTPUT_CSV}")

@@ -13,7 +13,6 @@ COLUMNS_TO_KEEP = [
     "Reference Answers",
     "RAG Model Name",
     "Provided Answer",
-    "IoU Correctness",
     "Human Correctness",
     "Human Numeric Score",
     "Human Explanation"
