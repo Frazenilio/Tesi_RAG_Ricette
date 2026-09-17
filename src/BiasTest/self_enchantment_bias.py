@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import argparse
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +14,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from src.config import load_config
-from src.prompts import PROMPT_LLM_JUDGE_SHORT as PROMPT_LLM_JUDGE
+try:
+    from src.prompts import PROMPT_LLM_JUDGE_SHORT as PROMPT_LLM_JUDGE
+except ImportError:
+    try:
+        from src.prompts import PROMPT_LLM_JUDGE
+    except ImportError:
+        PROMPT_LLM_JUDGE = (
+            "You are an impartial judge evaluating an answer.\n"
+            "Score from {min_score} to {max_score} based on logical match to Reference Answers.\n"
+            "Question: {prompted_query}\n"
+            "Provided Answer: {llm_rag_answer}\n"
+            "Reference Answers: {correct_answers}\n"
+            "Decision: [Score]\nExplanation: [Explanation]"
+        )
 from src.test_judges import parse_judge_output
 
 DEFAULT_INPUT_CSV = PROJECT_ROOT / "data" / "retrieval_base_test.csv"
@@ -28,6 +42,16 @@ MIN_SCORE = 0
 MAX_SCORE = 100
 DEFAULT_SCORE = 50
 
+def unload_model(client: Client | None, model_name: str) -> None:
+    """Unloads a model from Ollama memory by setting keep_alive=0 to prevent OOM."""
+    if client is None:
+        return
+    try:
+        client.generate(model=model_name, keep_alive=0)
+        print(f"Unloaded '{model_name}' from Ollama memory.")
+    except Exception as e:
+        print(f"Note: could not unload '{model_name}': {e}")
+
 def evaluate_single_answer(
     client: Client | None,
     judge_model: str,
@@ -37,7 +61,7 @@ def evaluate_single_answer(
     cfg,
     dry_run: bool = False
 ) -> tuple[float, str]:
-    """Evaluates a single answer using the specified judge model via Ollama."""
+    """Evaluates a single answer using the specified judge model via Ollama with automatic retries."""
     if dry_run or client is None:
         return 85.0, "[DRY RUN - Judge evaluation skipped. Prompt formatted successfully.]"
 
@@ -51,23 +75,63 @@ def evaluate_single_answer(
     )
     system_prompt = "You are an impartial judge evaluating an answer."
 
-    response = client.chat(
-        model=judge_model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        stream=False,
-        options={
-            "num_ctx": cfg.llm_num_ctx,
-            "num_predict": cfg.llm_num_predict,
-            "temperature": 0.0,  # Greedy decoding for consistent evaluation
-        },
-        keep_alive=cfg.llm_keep_alive,
-    )
-    eval_text = response.get("message", {}).get("content", "").strip()
-    score, explanation = parse_judge_output(eval_text)
-    return float(score), explanation
+    max_retries = getattr(cfg, "llm_retries", 3)
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.chat(
+                model=judge_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                stream=False,
+                options={
+                    "num_ctx": cfg.llm_num_ctx,
+                    "num_predict": cfg.llm_num_predict,
+                    "temperature": 0.0,  # Greedy decoding for consistent evaluation
+                },
+                keep_alive=cfg.llm_keep_alive,
+            )
+            eval_text = response.get("message", {}).get("content", "").strip()
+            score, explanation = parse_judge_output(eval_text)
+            return float(score), explanation
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"\n  [Retry {attempt}/{max_retries}] Error querying {judge_model}: {e}. Waiting 5s before retrying...")
+                try:
+                    unload_model(client, judge_model)
+                except Exception:
+                    pass
+                time.sleep(5)
+            else:
+                raise e
+
+def ensure_model_available(client: Client, model_name: str) -> None:
+    """Checks if model is available on Ollama server, pulling it if missing."""
+    try:
+        resp = client.list()
+        local_models = getattr(resp, "models", []) if hasattr(resp, "models") else (resp.get("models", []) if isinstance(resp, dict) else [])
+        model_names = []
+        for m in local_models:
+            name = getattr(m, "model", None) or getattr(m, "name", None)
+            if not name and isinstance(m, dict):
+                name = m.get("model") or m.get("name")
+            if name:
+                model_names.append(name)
+
+        if model_name in model_names or f"{model_name}:latest" in model_names:
+            return
+
+        for name in model_names:
+            if name.startswith(model_name) or model_name.startswith(name):
+                return
+
+        print(f"Model '{model_name}' not found in Ollama. Pulling now (please wait a moment)...")
+        client.pull(model_name)
+        print(f"Successfully pulled '{model_name}'!")
+    except Exception as e:
+        print(f"Note on checking/pulling '{model_name}': {e}")
+
 
 def run_self_enchantment_bias_for_judge(
     judge_key: str,  # "llama" or "gemma"
@@ -77,7 +141,7 @@ def run_self_enchantment_bias_for_judge(
     ollama_host: str = DEFAULT_OLLAMA_HOST,
     dry_run: bool = False
 ) -> Path:
-    """Runs the self-enchantment test for a single judge model."""
+    """Runs Self-Enchantment bias test for a single judge against its own generations vs the other model."""
     df = pd.read_csv(input_csv)
     cfg = load_config()
 
@@ -95,6 +159,7 @@ def run_self_enchantment_bias_for_judge(
             print("Successfully connected to Ollama server.")
         except Exception as e:
             raise ConnectionError(f"Could not connect to Ollama at {ollama_host}: {e}")
+        ensure_model_available(client, judge_model)
 
     results = []
     self_scores = []
@@ -236,6 +301,8 @@ def run_self_enchantment_bias(
             dry_run=dry_run
         )
         generated_files.append(f_llama)
+        if not dry_run:
+            unload_model(Client(host=ollama_host, timeout=cfg.llm_timeout), llama_model)
 
     if judge in ("gemma", "both"):
         f_gemma = run_self_enchantment_bias_for_judge(
@@ -247,6 +314,8 @@ def run_self_enchantment_bias(
             dry_run=dry_run
         )
         generated_files.append(f_gemma)
+        if not dry_run:
+            unload_model(Client(host=ollama_host, timeout=cfg.llm_timeout), gemma_model)
 
     return generated_files
 

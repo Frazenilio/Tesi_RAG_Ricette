@@ -23,12 +23,12 @@ models:
     # - "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF" ## DA USARE
     - "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" ## DA USARE
     # - "qwen3.5:0.8b" ## DA TOGLIERE
-    # - "gemma3:1b"
+    - "gemma3:1b"
     # - "qwen3.5:2b"
     # - "qwen3.5:4b"
     # - "ministral-3:3b"
     # - "granite4.1:3b"
-    - "gemma3:4b"
+    # - "gemma3:4b"
     # - "gemma3:12b"
     # - "gemma4:e2b"
     # - "gemma4:e4b"
@@ -46,7 +46,7 @@ models:
 
   # device: "cuda"
   ## NEW: I use CPU (no NVIDIA)
-  device: "cpu"
+  device: "cuda"
   llm_num_ctx: 4096
   llm_num_predict: 256 ## 1024  ## Increased because ministral talk too much
   llm_think: false

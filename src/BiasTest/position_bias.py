@@ -42,6 +42,43 @@ def deterministic_shuffle(items: list[str], seed: int, recipe_idx: int) -> tuple
     raw_shuffled = [text for _, text in shuffled]
     return shuffled, raw_shuffled
 
+def unload_model(client: Client | None, model_name: str) -> None:
+    """Unloads a model from Ollama memory by setting keep_alive=0 to prevent OOM."""
+    if client is None:
+        return
+    try:
+        client.generate(model=model_name, keep_alive=0)
+        print(f"Unloaded '{model_name}' from Ollama memory.")
+    except Exception as e:
+        print(f"Note: could not unload '{model_name}': {e}")
+
+def ensure_model_available(client: Client, model_name: str) -> None:
+    """Checks if model is available on Ollama server, pulling it if missing."""
+    try:
+        resp = client.list()
+        local_models = getattr(resp, "models", []) if hasattr(resp, "models") else (resp.get("models", []) if isinstance(resp, dict) else [])
+        model_names = []
+        for m in local_models:
+            name = getattr(m, "model", None) or getattr(m, "name", None)
+            if not name and isinstance(m, dict):
+                name = m.get("model") or m.get("name")
+            if name:
+                model_names.append(name)
+
+        if model_name in model_names or f"{model_name}:latest" in model_names:
+            return
+
+        for name in model_names:
+            if name.startswith(model_name) or model_name.startswith(name):
+                return
+
+        print(f"Model '{model_name}' not found in Ollama. Pulling now (please wait a moment)...")
+        client.pull(model_name)
+        print(f"Successfully pulled '{model_name}'!")
+    except Exception as e:
+        print(f"Note on checking/pulling '{model_name}': {e}")
+
+
 def run_position_bias(
     input_csv: Path = DEFAULT_INPUT_CSV,
     save_folder: Path = DEFAULT_SAVE_FOLDER,
@@ -89,6 +126,7 @@ def run_position_bias(
                 "If running locally, ensure 'ollama serve' is active.\n"
                 "If running on Google Colab, pass the tunnel URL via --ollama_host <URL>."
             )
+        ensure_model_available(client, model_name)
 
     results = []
     
@@ -176,6 +214,10 @@ def run_position_bias(
 
     print(f"\nPosition Bias test complete!")
     print(f"Saved {len(results)} queries to: {out_file}")
+
+    if not dry_run and client is not None:
+        unload_model(client, model_name)
+
     return out_file
 
 def main():
