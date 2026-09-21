@@ -1,3 +1,5 @@
+__pycache__/
+.venv/
 results/
 *.pyc
 *.cpython-314.pyc
