@@ -65,7 +65,14 @@ def run_judge_round(answer: str, query: str, correct_answers_str: str, judges: l
     for runtime in judges:
         model_name = runtime.spec.visible_label
         
+        min_score = getattr(cfg, "min_score", 0)
+        max_score = getattr(cfg, "max_score", 100)
+        default_score = getattr(cfg, "default_score", 50)
+        
         user_message = PROMPT_LLM_JUDGE.format(
+            min_score=min_score,
+            max_score=max_score,
+            default_score=default_score,
             prompted_query=query,
             llm_rag_answer=answer,
             correct_answers=correct_answers_str

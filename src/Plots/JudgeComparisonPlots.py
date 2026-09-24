@@ -11,16 +11,24 @@ import seaborn as sns
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-from src.metrics import compute_iou_stats
+from src.APIRequests.APIModels import Model, OR_NAME_API, GROQ_NAME_API
 
 DEFAULT_JUDGES_CSV = PROJECT_ROOT / "data" / "APICalls" / "API_Max100_judges.csv"
 DEFAULT_DATASET_CSV = PROJECT_ROOT / "data" / "judgement_dataset.csv"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "Judges"
 
 # Visual styling tokens
-COLOR_IOU = "#2b5c8f"        # Deep Slate Blue
 COLOR_HUMAN = "#27ae60"      # Emerald Green
 COLOR_AVG_JUDGE = "#34495e"  # Dark Slate Navy (Consensus / Avg Judges)
+
+# API Judge Model Mapping from src/APIRequests/APIModels.py
+# (for Qwen, Groq is used as specified)
+API_JUDGE_MODELS: dict[str, str] = {
+    Model.GEMMA.value: "Gemma 4 26b:a4b",       # "google/gemma-4-26b-a4b-it:free"
+    Model.QWEN.value: "Qwen 3.6:27b",          # "qwen/qwen3.6-27b"
+    Model.LLAMA.value: "Llama 3.1:8b instant", # "llama-3.1-8b-instant"
+    Model.GPT.value: "GPT-OSS 20b",            # "openai/gpt-oss-20b"
+}
 
 # Judge Model Palette for API Judges
 JUDGE_COLORS = {
@@ -29,17 +37,28 @@ JUDGE_COLORS = {
     "LLAMA": "#2980b9",  # Ocean Blue
     "GPT": "#8e44ad",    # Royal Purple
 }
+for k, v in API_JUDGE_MODELS.items():
+    JUDGE_COLORS[v] = JUDGE_COLORS[k]
 
-JUDGE_LABELS = {
-    "GEMMA": "Gemma",
-    "QWEN": "Qwen",
-    "LLAMA": "Llama",
-    "GPT": "GPT",
-}
+# API Judge Models Order & Labels
+MODEL_ORDER = list(API_JUDGE_MODELS.values())
+MODEL_LABELS = {v: v for v in API_JUDGE_MODELS.values()}
 
 JUDGE_ORDER = ["GEMMA", "QWEN", "LLAMA", "GPT"]
 
-MODEL_ORDER = [
+# Labels displaying the model identifiers set in API_JUDGE_MODELS
+JUDGE_LABELS = {
+    "GEMMA": API_JUDGE_MODELS["GEMMA"],
+    "QWEN": API_JUDGE_MODELS["QWEN"],
+    "LLAMA": API_JUDGE_MODELS["LLAMA"],
+    "GPT": API_JUDGE_MODELS["GPT"],
+}
+
+# Single-line labels for heatmaps and compact legends
+JUDGE_LABELS_COMPACT = JUDGE_LABELS.copy()
+
+# RAG Generator Models (evaluated in dataset from Ollama)
+RAG_GENERATOR_ORDER = [
     "Llama-3.2-3B-Instruct-GGUF",
     "gemma3:1b",
     "granite4.1:3b",
@@ -47,7 +66,7 @@ MODEL_ORDER = [
     "qwen3.5:4b",
 ]
 
-MODEL_LABELS = {
+RAG_GENERATOR_LABELS = {
     "Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
     "gemma3:1b": "Gemma 3 1B",
     "granite4.1:3b": "Granite 4.1 3B",
@@ -80,7 +99,7 @@ def load_and_extract_data(
     judges_csv: Path = DEFAULT_JUDGES_CSV,
     dataset_csv: Path = DEFAULT_DATASET_CSV,
 ) -> pd.DataFrame:
-    """Loads API judge scores from CSV and merges with main dataset to get IoU, Human scores, and generator metadata."""
+    """Loads API judge scores from CSV and merges with main dataset to get Human scores and generator metadata."""
     judges_csv = Path(judges_csv)
     dataset_csv = Path(dataset_csv)
 
@@ -95,8 +114,7 @@ def load_and_extract_data(
 
     # Clean main columns to avoid collisions
     cols_to_keep = [
-        "original_row", "Recipe", "Asked", "RAG Model Name",
-        "Provided Answer", "Reference Answers", "Human Numeric Score"
+        "original_row", "Recipe", "Asked", "RAG Model Name", "Human Numeric Score"
     ]
     df_main_clean = df_main[[c for c in cols_to_keep if c in df_main.columns]].copy()
 
@@ -105,27 +123,14 @@ def load_and_extract_data(
     # Dynamically find judge model columns
     judge_keys = []
     for i in range(1, 10):
-        m_col = f"Judge {i} Model Name"
-        s_col = f"Judge {i} Numeric Score"
+        m_col = f"Judge 1 Model Name".replace("1", str(i))
+        s_col = f"Judge 1 Numeric Score".replace("1", str(i))
         if m_col in df_api.columns and s_col in df_api.columns:
             m_name = df_api[m_col].dropna().iloc[0]
             judge_keys.append((i, m_name, s_col))
 
     rows = []
     for _, r in merged.iterrows():
-        orig = r.get("Provided Answer", "")
-        refs_raw = r.get("Reference Answers", "[]")
-        if isinstance(refs_raw, str):
-            try:
-                refs = json.loads(refs_raw)
-            except Exception:
-                refs = [refs_raw]
-        elif isinstance(refs_raw, list):
-            refs = refs_raw
-        else:
-            refs = []
-
-        max_iou, mean_iou, _ = compute_iou_stats(orig, refs)
         human_score = float(r["Human Numeric Score"]) if pd.notna(r.get("Human Numeric Score")) else np.nan
         rag_model = r.get("RAG Model Name", "unknown")
         rag_model_short = rag_model.split("/")[-1]
@@ -137,8 +142,6 @@ def load_and_extract_data(
             "gen_model_short": rag_model_short,
             "recipe_name": r.get("Recipe", ""),
             "human_score": human_score,
-            "iou_max": max_iou * 100.0,
-            "iou_mean": mean_iou * 100.0,
         }
 
         judge_scores = []
@@ -156,19 +159,19 @@ def load_and_extract_data(
 
 
 def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300) -> list[Path]:
-    """Plot 1 (Split): Overall benchmark (IoU, Human, Consensus Judges, Individual Judges) for Ingredients and Directions."""
+    """Plot 1 (Split): Overall benchmark (Human, Consensus Judges, Individual Judges) for Ingredients and Directions."""
     saved_paths = []
     judge_cols = [c for c in df.columns if c.startswith("judge_")]
-    metric_keys = ["iou_max", "human_score", "r1_avg_judge"] + judge_cols
-    metric_labels = ["Max IoU (%)", "Human Score", "Consensus Judges"] + [
+    metric_keys = ["human_score", "r1_avg_judge"] + judge_cols
+    metric_labels = ["Human Score", "Average Judges Score"] + [
         JUDGE_LABELS.get(c.replace("judge_", ""), c.replace("judge_", "")) for c in judge_cols
     ]
-    colors = [COLOR_IOU, COLOR_HUMAN, COLOR_AVG_JUDGE] + [
+    colors = [COLOR_HUMAN, COLOR_AVG_JUDGE] + [
         JUDGE_COLORS.get(c.replace("judge_", ""), "#7f8c8d") for c in judge_cols
     ]
 
     for t_key, t_title in TASKS:
-        fig, ax = plt.subplots(figsize=(10.5, 6.5))
+        fig, ax = plt.subplots(figsize=(10, 6.5))
         sub = df[df["target_type"] == t_key]
 
         means = [sub[m].dropna().mean() if len(sub[m].dropna()) > 0 else 0 for m in metric_keys]
@@ -178,7 +181,7 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
         rects = ax.bar(
             x,
             means,
-            width=0.6,
+            width=0.55,
             yerr=sems,
             capsize=4.5,
             color=colors,
@@ -200,30 +203,33 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
                     color="#2c3e50",
                 )
 
-        ax.set_title(f"Evaluation Benchmark: {t_title}\nIoU Score, Human Ground Truth, and LLM Judges", pad=14)
+        ax.set_title(f"Evaluation Benchmark: {t_title}\nHuman Ground Truth and LLM Judges", pad=14)
         ax.set_xticks(x)
         ax.set_xticklabels(metric_labels, rotation=20, ha="right", fontsize=11, fontweight="bold")
-        ax.set_ylabel("Score (0 – 100 Scale / % Overlap)", fontsize=12, fontweight="bold")
+        ax.set_ylabel("Score (0 – 100 Scale)", fontsize=12, fontweight="bold")
         ax.set_ylim(0, 115)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.3, linewidth=1)
 
         plt.tight_layout()
-        out_path = output_dir / f"iou_human_judges_{t_key}.png"
+        out_path = output_dir / f"human_judges_{t_key}.png"
         fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
         plt.close(fig)
         print(f"Saved: {out_path}")
         saved_paths.append(out_path)
 
     # Combined overview
-    fig, ax = plt.subplots(figsize=(13, 7.5))
+    fig, ax = plt.subplots(figsize=(12, 7))
     tasks_keys = ["ingredients", "directions"]
     task_labels = ["Ingredients", "Directions"]
     n_tasks = len(tasks_keys)
     n_metrics = len(metric_keys)
     x = np.arange(n_tasks)
-    width = 0.8 / n_metrics
+    width = 0.75 / n_metrics
+    compact_metric_labels = ["Human Score", "Average Judges Score"] + [
+        JUDGE_LABELS_COMPACT.get(c.replace("judge_", ""), c.replace("judge_", "")) for c in judge_cols
+    ]
 
-    for i, (mkey, mlabel, col) in enumerate(zip(metric_keys, metric_labels, colors)):
+    for i, (mkey, mlabel, col) in enumerate(zip(metric_keys, compact_metric_labels, colors)):
         means, sems = [], []
         for t in tasks_keys:
             sub = df[df["target_type"] == t][mkey].dropna()
@@ -236,15 +242,15 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
                 y_pos = mean + (sem if not np.isnan(sem) else 0) + 1.5
                 ax.annotate(f"{mean:.1f}", xy=(rect.get_x() + rect.get_width() / 2, y_pos), ha="center", va="bottom", fontsize=8.5, fontweight="bold", color="#2c3e50")
 
-    ax.set_title("Evaluation Benchmark: IoU Score, Human Score, and LLM Judges\nDivided by Task (Ingredients vs. Directions)", pad=18, fontsize=14, fontweight="bold")
+    ax.set_title("Evaluation Benchmark: Human Score and LLM Judges\nDivided by Task (Ingredients vs. Directions)", pad=18, fontsize=14, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(task_labels, fontsize=12, fontweight="bold")
-    ax.set_ylabel("Score (0 – 100 Scale / % Overlap)", fontsize=11, fontweight="bold")
+    ax.set_ylabel("Score (0 – 100 Scale)", fontsize=11, fontweight="bold")
     ax.set_ylim(0, 115)
     ax.axhline(100, color="gray", linestyle="--", alpha=0.3, linewidth=1)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=4, frameon=True, facecolor="white", edgecolor="#bdc3c7", fontsize=9.5)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, frameon=True, facecolor="white", edgecolor="#bdc3c7", fontsize=9.5)
     plt.tight_layout()
-    combined_path = output_dir / "iou_human_judges_by_task.png"
+    combined_path = output_dir / "human_judges_by_task.png"
     fig.savefig(combined_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {combined_path}")
@@ -254,22 +260,21 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
 
 
 def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300) -> list[Path]:
-    """Plot 2 (Split): Dedicated plots comparing each Judge model against Human Ground Truth & IoU for Ingredients and Directions."""
+    """Plot 2 (Split): Dedicated plots comparing each Judge model against Human Ground Truth for Ingredients and Directions."""
     saved_paths = []
     judge_cols = [c for c in df.columns if c.startswith("judge_")]
     judge_names = [c.replace("judge_", "") for c in judge_cols]
     judge_labels = [JUDGE_LABELS.get(j, j) for j in judge_names]
 
     x = np.arange(len(judge_cols))
-    width = 0.26
+    width = 0.35
 
     for t_key, t_title in TASKS:
-        fig, ax = plt.subplots(figsize=(11, 7))
+        fig, ax = plt.subplots(figsize=(10.5, 6.5))
         t_data = df[df["target_type"] == t_key]
 
         judge_means, judge_sems = [], []
         human_means, human_sems = [], []
-        iou_means, iou_sems = [], []
 
         for jcol in judge_cols:
             sub = t_data.dropna(subset=[jcol])
@@ -277,11 +282,9 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
             judge_sems.append(sub[jcol].sem())
             human_means.append(sub["human_score"].mean())
             human_sems.append(sub["human_score"].sem())
-            iou_means.append(sub["iou_max"].mean())
-            iou_sems.append(sub["iou_max"].sem())
 
         r_judge = ax.bar(
-            x - width,
+            x - width / 2,
             judge_means,
             width,
             yerr=judge_sems,
@@ -294,7 +297,7 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
         )
 
         r_human = ax.bar(
-            x,
+            x + width / 2,
             human_means,
             width,
             yerr=human_sems,
@@ -306,21 +309,8 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
             linewidth=1.2,
         )
 
-        r_iou = ax.bar(
-            x + width,
-            iou_means,
-            width,
-            yerr=iou_sems,
-            capsize=4,
-            label="IoU Score (%)",
-            color=COLOR_IOU,
-            alpha=0.92,
-            edgecolor="white",
-            linewidth=1.2,
-        )
-
         # Annotations above whiskers
-        for rects, sems_list in [(r_judge, judge_sems), (r_human, human_sems), (r_iou, iou_sems)]:
+        for rects, sems_list in [(r_judge, judge_sems), (r_human, human_sems)]:
             for r, sem in zip(rects, sems_list):
                 h = r.get_height()
                 if h > 0:
@@ -341,7 +331,7 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
             sign = "+" if delta >= 0 else ""
             d_color = "#c0392b" if delta < -5 else ("#e67e22" if delta > 5 else "#27ae60")
             ax.text(
-                i_j - width / 2,
+                i_j,
                 110,
                 f"Δ = {sign}{delta:.1f}",
                 ha="center",
@@ -352,10 +342,10 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="#f8f9f9", edgecolor=d_color, alpha=0.95),
             )
 
-        ax.set_title(f"LLM Judges vs. Human Ground Truth & IoU: {t_title}\n(Δ = Judge Score − Human Score)", pad=14)
+        ax.set_title(f"LLM Judges vs. Human Ground Truth: {t_title}\n(Δ = Judge Score − Human Score)", pad=14)
         ax.set_xticks(x)
         ax.set_xticklabels(judge_labels, fontsize=11, fontweight="bold")
-        ax.set_ylabel("Score (0 – 100 Scale / % Overlap)", fontsize=12, fontweight="bold")
+        ax.set_ylabel("Score (0 – 100 Scale)", fontsize=12, fontweight="bold")
         ax.set_ylim(0, 120)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.3)
         ax.legend(loc="lower left", fontsize=10.5, frameon=True)
@@ -375,38 +365,36 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
     for idx, jcol in enumerate(judge_cols):
         ax = axes[idx]
         j_key = jcol.replace("judge_", "")
-        j_label = JUDGE_LABELS.get(j_key, j_key)
+        j_label_compact = JUDGE_LABELS_COMPACT.get(j_key, j_key)
         j_color = JUDGE_COLORS.get(j_key, "#2980b9")
         sub_df = df.dropna(subset=[jcol]).copy()
         x_g = np.arange(len(task_keys_list))
-        w_g = 0.24
-        jm_l, hm_l, im_l = [], [], []
-        js_l, hs_l, is_l = [], [], []
+        w_g = 0.32
+        jm_l, hm_l = [], []
+        js_l, hs_l = [], []
         for t in task_keys_list:
             t_data = sub_df[sub_df["target_type"] == t]
             jm_l.append(t_data[jcol].mean())
             js_l.append(t_data[jcol].sem())
             hm_l.append(t_data["human_score"].mean())
             hs_l.append(t_data["human_score"].sem())
-            im_l.append(t_data["iou_max"].mean())
-            is_l.append(t_data["iou_max"].sem())
-        ax.bar(x_g - w_g, jm_l, w_g, yerr=js_l, capsize=4, label=f"Judge ({j_label})", color=j_color, alpha=0.9, edgecolor="white")
-        ax.bar(x_g, hm_l, w_g, yerr=hs_l, capsize=4, label="Human Ground Truth", color=COLOR_HUMAN, alpha=0.9, edgecolor="white")
-        ax.bar(x_g + w_g, im_l, w_g, yerr=is_l, capsize=4, label="IoU Score (%)", color=COLOR_IOU, alpha=0.9, edgecolor="white")
+        ax.bar(x_g - w_g / 2, jm_l, w_g, yerr=js_l, capsize=4, label=f"Judge ({j_key})", color=j_color, alpha=0.9, edgecolor="white")
+        ax.bar(x_g + w_g / 2, hm_l, w_g, yerr=hs_l, capsize=4, label="Human Ground Truth", color=COLOR_HUMAN, alpha=0.9, edgecolor="white")
         for t_i, (jm, hm) in enumerate(zip(jm_l, hm_l)):
             delta = jm - hm
             sign = "+" if delta >= 0 else ""
             d_color = "#c0392b" if delta < -5 else ("#e67e22" if delta > 5 else "#27ae60")
             ax.text(t_i, 108, f"Δ(Judge - Human) = {sign}{delta:.1f}", ha="center", va="center", fontsize=9.5, fontweight="bold", color=d_color, bbox=dict(boxstyle="round,pad=0.3", facecolor="#f8f9f9", edgecolor=d_color, alpha=0.95))
-        ax.set_title(f"Judge: {j_label} (Evaluated n={len(sub_df)})", fontsize=12, pad=12)
+        ax.set_title(f"Judge: {j_label_compact} (n={len(sub_df)})", fontsize=11.5, pad=12)
         ax.set_xticks(x_g)
         ax.set_xticklabels(task_labels_list, fontsize=11, fontweight="bold")
+        ax.set_ylabel("Score (0 – 100 Scale)", fontsize=11, fontweight="bold")
         ax.set_ylim(0, 120)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.3)
         ax.legend(loc="lower left", fontsize=8.5, frameon=True)
-    fig.suptitle("Individual Judge Model Analysis vs. Human Ground Truth & IoU Score\n(Divided by Ingredients and Directions)", fontsize=15, fontweight="bold", y=0.99)
+    fig.suptitle("Individual Judge Model Analysis vs. Human Ground Truth\n(Divided by Ingredients and Directions)", fontsize=15, fontweight="bold", y=0.99)
     plt.tight_layout()
-    combined_path = output_dir / "judge_vs_human_iou_by_judge_model.png"
+    combined_path = output_dir / "judge_vs_human_by_judge_model.png"
     fig.savefig(combined_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {combined_path}")
@@ -416,42 +404,28 @@ def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi
 
 
 def plot_generator_models_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300) -> list[Path]:
-    """Plot 3 (Split): Generator models evaluated by IoU, Human, and Consensus Judges for Ingredients and Directions."""
+    """Plot 3 (Split): Generator models evaluated by Human and Consensus Judges for Ingredients and Directions."""
     saved_paths = []
-    gen_models = [m for m in MODEL_ORDER if m in df["gen_model_short"].unique()]
+    gen_models = [m for m in RAG_GENERATOR_ORDER if m in df["gen_model_short"].unique()]
     x = np.arange(len(gen_models))
-    width = 0.26
+    width = 0.35
 
     for t_key, t_title in TASKS:
         fig, ax = plt.subplots(figsize=(10.5, 6.5))
         t_data = df[df["target_type"] == t_key]
 
-        iou_vals, human_vals, judge_vals = [], [], []
-        iou_err, human_err, judge_err = [], [], []
+        human_vals, judge_vals = [], []
+        human_err, judge_err = [], []
 
         for gm in gen_models:
             sub = t_data[t_data["gen_model_short"] == gm]
-            iou_vals.append(sub["iou_max"].mean())
-            iou_err.append(sub["iou_max"].sem())
             human_vals.append(sub["human_score"].mean())
             human_err.append(sub["human_score"].sem())
             judge_vals.append(sub["r1_avg_judge"].mean())
             judge_err.append(sub["r1_avg_judge"].sem())
 
         r1 = ax.bar(
-            x - width,
-            iou_vals,
-            width,
-            yerr=iou_err,
-            capsize=3.5,
-            label="IoU Score (%)",
-            color=COLOR_IOU,
-            alpha=0.92,
-            edgecolor="white",
-            linewidth=1.2,
-        )
-        r2 = ax.bar(
-            x,
+            x - width / 2,
             human_vals,
             width,
             yerr=human_err,
@@ -462,20 +436,20 @@ def plot_generator_models_breakdown_split(df: pd.DataFrame, output_dir: Path, dp
             edgecolor="white",
             linewidth=1.2,
         )
-        r3 = ax.bar(
-            x + width,
+        r2 = ax.bar(
+            x + width / 2,
             judge_vals,
             width,
             yerr=judge_err,
             capsize=3.5,
-            label="Consensus Judges",
+            label="Average Judges Score",
             color=COLOR_AVG_JUDGE,
             alpha=0.92,
             edgecolor="white",
             linewidth=1.2,
         )
 
-        for rects, errs in [(r1, iou_err), (r2, human_err), (r3, judge_err)]:
+        for rects, errs in [(r1, human_err), (r2, judge_err)]:
             for r, err in zip(rects, errs):
                 h = r.get_height()
                 if h > 0:
@@ -490,9 +464,9 @@ def plot_generator_models_breakdown_split(df: pd.DataFrame, output_dir: Path, dp
                         color="#2c3e50",
                     )
 
-        ax.set_title(f"Generator Models Performance: {t_title}\nIoU Score vs. Human Score vs. Consensus Judges", pad=14)
+        ax.set_title(f"Generator Models Performance: {t_title}\nHuman Score vs. Average Judges Score", pad=14)
         ax.set_xticks(x)
-        ax.set_xticklabels([MODEL_LABELS.get(m, m) for m in gen_models], rotation=15, ha="right", fontsize=11, fontweight="bold")
+        ax.set_xticklabels([RAG_GENERATOR_LABELS.get(m, m) for m in gen_models], rotation=15, ha="right", fontsize=11, fontweight="bold")
         ax.set_ylabel("Score (0 – 100)", fontsize=12, fontweight="bold")
         ax.set_ylim(0, 118)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.3)
@@ -506,39 +480,37 @@ def plot_generator_models_breakdown_split(df: pd.DataFrame, output_dir: Path, dp
         saved_paths.append(out_path)
 
     # Combined overview
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6.5), sharey=True)
+    w_comb = 0.35
     for ax_idx, (t_key, t_title) in enumerate(TASKS):
         ax = axes[ax_idx]
         t_data = df[df["target_type"] == t_key]
-        iou_vals, human_vals, judge_vals = [], [], []
-        iou_err, human_err, judge_err = [], [], []
+        human_vals, judge_vals = [], []
+        human_err, judge_err = [], []
         for gm in gen_models:
             sub = t_data[t_data["gen_model_short"] == gm]
-            iou_vals.append(sub["iou_max"].mean())
-            iou_err.append(sub["iou_max"].sem())
             human_vals.append(sub["human_score"].mean())
             human_err.append(sub["human_score"].sem())
             judge_vals.append(sub["r1_avg_judge"].mean())
             judge_err.append(sub["r1_avg_judge"].sem())
-        r1 = ax.bar(x - width, iou_vals, width, yerr=iou_err, capsize=3, label="IoU Score (%)", color=COLOR_IOU, alpha=0.9, edgecolor="white")
-        r2 = ax.bar(x, human_vals, width, yerr=human_err, capsize=3, label="Human Score", color=COLOR_HUMAN, alpha=0.9, edgecolor="white")
-        r3 = ax.bar(x + width, judge_vals, width, yerr=judge_err, capsize=3, label="Consensus Judges", color=COLOR_AVG_JUDGE, alpha=0.9, edgecolor="white")
-        for rects, errs in [(r1, iou_err), (r2, human_err), (r3, judge_err)]:
+        r1 = ax.bar(x - w_comb / 2, human_vals, w_comb, yerr=human_err, capsize=3, label="Human Score", color=COLOR_HUMAN, alpha=0.9, edgecolor="white")
+        r2 = ax.bar(x + w_comb / 2, judge_vals, w_comb, yerr=judge_err, capsize=3, label="Average Judges Score", color=COLOR_AVG_JUDGE, alpha=0.9, edgecolor="white")
+        for rects, errs in [(r1, human_err), (r2, judge_err)]:
             for r, err in zip(rects, errs):
                 h = r.get_height()
                 if h > 0:
                     y_pos = h + (err if not np.isnan(err) else 0) + 1.8
-                    ax.annotate(f"{h:.1f}", xy=(r.get_x() + r.get_width() / 2, y_pos), ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+                    ax.annotate(f"{h:.1f}", xy=(r.get_x() + r.get_width() / 2, y_pos), ha="center", va="bottom", fontsize=8, fontweight="bold")
         ax.set_title(f"Task: {t_title}", fontsize=13, pad=12)
         ax.set_xticks(x)
-        ax.set_xticklabels([MODEL_LABELS.get(m, m) for m in gen_models], rotation=15, ha="right", fontsize=10.5)
-        ax.set_ylabel("Score (0 – 100)" if ax_idx == 0 else "", fontsize=11)
+        ax.set_xticklabels([RAG_GENERATOR_LABELS.get(m, m) for m in gen_models], rotation=15, ha="right", fontsize=10.5)
+        ax.set_ylabel("Score (0 – 100)" if ax_idx == 0 else "", fontsize=11, fontweight="bold")
         ax.set_ylim(0, 118)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.3)
         ax.legend(loc="upper right", fontsize=9.5, frameon=True)
-    fig.suptitle("Performance Across Generator Models: IoU vs. Human vs. Consensus Judges", fontsize=15, fontweight="bold", y=0.99)
+    fig.suptitle("Performance Across Generator Models: Human Score vs. Average Judges Score", fontsize=15, fontweight="bold", y=0.99)
     plt.tight_layout()
-    combined_path = output_dir / "generator_models_iou_human_judges.png"
+    combined_path = output_dir / "generator_models_human_judges.png"
     fig.savefig(combined_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {combined_path}")
@@ -551,13 +523,13 @@ def plot_correlation_heatmaps_split(df: pd.DataFrame, output_dir: Path, dpi: int
     """Plot 4 (Split): Generates dedicated, large correlation heatmaps for Ingredients and Directions."""
     saved_paths = []
     judge_cols = [c for c in df.columns if c.startswith("judge_")]
-    cols_to_corr = ["human_score", "iou_max", "r1_avg_judge"] + judge_cols
-    col_labels = ["Human", "IoU Max", "Consensus"] + [
-        JUDGE_LABELS.get(c.replace("judge_", ""), c.replace("judge_", "")) for c in judge_cols
+    cols_to_corr = ["human_score", "r1_avg_judge"] + judge_cols
+    col_labels = ["Human", "Average Judges Score"] + [
+        JUDGE_LABELS_COMPACT.get(c.replace("judge_", ""), c.replace("judge_", "")) for c in judge_cols
     ]
 
     for t_key, t_title in TASKS:
-        fig, ax = plt.subplots(figsize=(8.5, 7))
+        fig, ax = plt.subplots(figsize=(8, 6.5))
         sub = df[df["target_type"] == t_key][cols_to_corr].copy()
         sub.columns = col_labels
 
@@ -580,7 +552,7 @@ def plot_correlation_heatmaps_split(df: pd.DataFrame, output_dir: Path, dpi: int
             ax=ax,
         )
 
-        ax.set_title(f"Metric Alignment Matrix: {t_title}\n(Human Ground Truth vs. IoU vs. LLM Judges)", pad=14)
+        ax.set_title(f"Metric Alignment Matrix: {t_title}\n(Human Ground Truth vs. LLM Judges)", pad=14)
         plt.tight_layout()
         out_path = output_dir / f"correlation_matrix_{t_key}.png"
         fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
@@ -589,7 +561,7 @@ def plot_correlation_heatmaps_split(df: pd.DataFrame, output_dir: Path, dpi: int
         saved_paths.append(out_path)
 
     # Combined overview
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
     for ax_idx, (t_key, t_title) in enumerate(TASKS):
         ax = axes[ax_idx]
         sub = df[df["target_type"] == t_key][cols_to_corr].copy()
@@ -598,9 +570,9 @@ def plot_correlation_heatmaps_split(df: pd.DataFrame, output_dir: Path, dpi: int
         mask = np.triu(np.ones_like(corr, dtype=bool))
         sns.heatmap(corr, mask=mask, annot=True, fmt=".2f", cmap="vlag", vmin=-0.5, vmax=1.0, center=0.0, linewidths=0.8, cbar=ax_idx == 1, cbar_kws={"label": "Pearson Correlation (r)"}, ax=ax)
         ax.set_title(f"Metric Alignment Matrix: {t_title}", fontsize=13, pad=12)
-    fig.suptitle("Correlation & Alignment: Human Ground Truth vs. IoU vs. LLM Judges", fontsize=15, fontweight="bold", y=0.99)
+    fig.suptitle("Correlation & Alignment: Human Ground Truth vs. LLM Judges", fontsize=15, fontweight="bold", y=0.99)
     plt.tight_layout()
-    combined_path = output_dir / "iou_judges_human_correlation_matrix.png"
+    combined_path = output_dir / "judges_human_correlation_matrix.png"
     fig.savefig(combined_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {combined_path}")
@@ -610,7 +582,7 @@ def plot_correlation_heatmaps_split(df: pd.DataFrame, output_dir: Path, dpi: int
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate publication-ready plots for IoU, Human and LLM Judge scores using API judge results.")
+    parser = argparse.ArgumentParser(description="Generate publication-ready plots for Human and LLM Judge scores using API judge results.")
     parser.add_argument("--judges-csv", type=Path, default=DEFAULT_JUDGES_CSV, help="Path to API judges CSV file")
     parser.add_argument("--dataset-csv", type=Path, default=DEFAULT_DATASET_CSV, help="Path to main judgement dataset CSV file")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Output directory for plots")

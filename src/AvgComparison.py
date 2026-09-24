@@ -242,6 +242,143 @@ def score_variation():
     else:
         print("pingouin library not installed. Cannot compute ICC(3,1).")
 
+def scale_metrics_comparison():
+    """
+    Computes and prints Spread, Standard Deviation (SD), Coefficient of Variation (CV),
+    and Mean for Human baseline and each Judge model on each scale (0-1, 0-10, 0-100),
+    providing direct comparisons across evaluators and scales.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    api_calls_dir = os.path.join(current_dir, '..', 'data', "APICalls")
+    judgement_csv = os.path.join(current_dir, '..', 'data', 'judgement_dataset.csv')
+
+    if not os.path.exists(judgement_csv):
+        print(f"Error: Could not find {judgement_csv}")
+        return
+
+    df_human = pd.read_csv(judgement_csv)
+    df_human["original_row"] = df_human.index + 2
+
+    SCALES = [
+        ("Scale 0-1", "API_Max1_judges.csv", 1.0),
+        ("Scale 0-10", "API_Max10_judges.csv", 10.0),
+        ("Scale 0-100", "API_Max100_judges.csv", 100.0),
+    ]
+
+    records = []
+
+    print("\n" + "=" * 80)
+    print("--- Metrics per Scale: Human vs. LLM Judges (Spread, SD, CV, Mean) ---")
+    print("=" * 80)
+
+    for scale_label, filename, max_score in SCALES:
+        csv_path = os.path.join(api_calls_dir, filename)
+        if not os.path.exists(csv_path):
+            print(f"Skipping {filename}: File not found.")
+            continue
+
+        df_api = pd.read_csv(csv_path)
+        if "original_row" not in df_api.columns:
+            df_api["original_row"] = df_api.index + 2
+
+        merged = pd.merge(
+            df_api,
+            df_human[["original_row", "Human Numeric Score"]],
+            on="original_row",
+            how="inner",
+        )
+
+        print(f"\n>>> {scale_label} (Max = {int(max_score)}) <<<")
+        print(f"{'Evaluator':<10} | {'Mean':>8} | {'SD':>8} | {'CV (SD/Mean)':>14} | {'Spread (Max-Min)':>18} | {'Min':>6} | {'Max':>6}")
+        print("-" * 80)
+
+        # Human baseline on this scale
+        h_raw = merged["Human Numeric Score"].dropna().astype(float).values
+        h_scaled = (h_raw / 100.0) * max_score
+        h_mean = np.mean(h_scaled)
+        h_sd = np.std(h_scaled)
+        h_cv = h_sd / h_mean if h_mean > 0 else 0.0
+        h_min = np.min(h_scaled)
+        h_max = np.max(h_scaled)
+        h_spread = h_max - h_min
+
+        records.append({
+            "Scale": scale_label,
+            "Evaluator": "Human",
+            "Mean": round(h_mean, 2),
+            "SD": round(h_sd, 2),
+            "CV": round(h_cv, 4),
+            "Spread": round(h_spread, 2),
+            "Min": round(h_min, 2),
+            "Max": round(h_max, 2),
+        })
+        print(f"{'Human':<10} | {h_mean:8.2f} | {h_sd:8.2f} | {h_cv:14.4f} | {h_spread:18.2f} | {h_min:6.2f} | {h_max:6.2f}")
+
+        # Judges
+        for i in range(1, 5):
+            m_col = f"Judge {i} Model Name"
+            s_col = f"Judge {i} Numeric Score"
+            if m_col not in df_api.columns or s_col not in df_api.columns:
+                continue
+
+            valid_models = df_api[m_col].dropna()
+            if valid_models.empty:
+                continue
+            model_name = str(valid_models.iloc[0]).strip()
+
+            valid = merged[[s_col]].dropna()
+            valid = valid[valid[s_col] != -1]
+            if len(valid) == 0:
+                continue
+
+            j_scores = valid[s_col].astype(float).values
+            j_scores = np.clip(j_scores, 0.0, max_score)
+
+            j_mean = np.mean(j_scores)
+            j_sd = np.std(j_scores)
+            j_cv = j_sd / j_mean if j_mean > 0 else 0.0
+            j_min = np.min(j_scores)
+            j_max = np.max(j_scores)
+            j_spread = j_max - j_min
+
+            records.append({
+                "Scale": scale_label,
+                "Evaluator": model_name,
+                "Mean": round(j_mean, 2),
+                "SD": round(j_sd, 2),
+                "CV": round(j_cv, 4),
+                "Spread": round(j_spread, 2),
+                "Min": round(j_min, 2),
+                "Max": round(j_max, 2),
+            })
+            print(f"{model_name:<10} | {j_mean:8.2f} | {j_sd:8.2f} | {j_cv:14.4f} | {j_spread:18.2f} | {j_min:6.2f} | {j_max:6.2f}")
+
+    df_all = pd.DataFrame(records)
+    if df_all.empty:
+        return
+
+    # Pivot summary tables across scales
+    print("\n" + "=" * 80)
+    print("--- Direct Comparisons Across Scales (Human vs. Judges) ---")
+    print("=" * 80)
+
+    print("\n[Spread (Max - Min) across scales]")
+    p_spread = df_all.pivot(index="Evaluator", columns="Scale", values="Spread")
+    print(p_spread.to_string())
+
+    print("\n[Standard Deviation (SD) across scales]")
+    p_sd = df_all.pivot(index="Evaluator", columns="Scale", values="SD")
+    print(p_sd.to_string())
+
+    print("\n[Coefficient of Variation (CV = SD / Mean) across scales]")
+    p_cv = df_all.pivot(index="Evaluator", columns="Scale", values="CV")
+    print(p_cv.to_string())
+
+    print("\n[Mean Score across scales]")
+    p_mean = df_all.pivot(index="Evaluator", columns="Scale", values="Mean")
+    print(p_mean.to_string())
+    print()
+
 def coherence_accuracy():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     api_calls_dir = os.path.join(current_dir, '..', 'data', "APICalls")
@@ -900,6 +1037,7 @@ def singular_judge_comparison():
 if __name__ == "__main__":
     human_difference()
     score_variation()
+    scale_metrics_comparison()
     coherence_accuracy()
     human_reliability()
     aggregate_comparison()

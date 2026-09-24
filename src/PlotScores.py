@@ -189,6 +189,7 @@ def plot_score_variation():
     ## Dev std / avg --> lower avg, bigger number compared to dev std
     plot_data_cv = []
     plot_data_sd = []
+    plot_data_spread = []
     avg_spreads = {}
     
     for model_name, rows in judge_data.items():
@@ -210,6 +211,7 @@ def plot_score_variation():
                 
                 plot_data_cv.append({"Judge": model_name, "CV": cv})
                 plot_data_sd.append({"Judge": model_name, "SD": std_dev})
+                plot_data_spread.append({"Judge": model_name, "Spread": spread})
                 
         if len(cvs) > 0:
             avg_spreads[model_name] = np.mean(spreads)
@@ -220,6 +222,7 @@ def plot_score_variation():
         
     df_cv = pd.DataFrame(plot_data_cv)
     df_sd = pd.DataFrame(plot_data_sd)
+    df_spread = pd.DataFrame(plot_data_spread)
     
     try:
         import seaborn as sns
@@ -258,6 +261,22 @@ def plot_score_variation():
     sd_plot_path = os.path.join(OUTPUT_PLOT_DIR, "StandardDeviation_Boxplot.png")
     plt.savefig(sd_plot_path, dpi=300)
     plt.close()
+
+    # Plot 1.75: Boxplot of Spreads
+    plt.figure(figsize=(10, 6))
+    if 'seaborn' in sys.modules:
+        sns.boxplot(x="Judge", y="Spread", hue="Judge", data=df_spread, palette="Set2", legend=False)
+    else:
+        df_spread.boxplot(column="Spread", by="Judge", grid=True, figsize=(10, 6), ax=plt.gca())
+        plt.suptitle("")
+        
+    plt.title("Score Volatility: Spread (Max - Min) Distribution per Judge across scales", fontsize=14)
+    plt.ylabel("Spread (%)", fontsize=12)
+    plt.xlabel("Judge (Model)", fontsize=12)
+    plt.tight_layout()
+    spread_box_plot_path = os.path.join(OUTPUT_PLOT_DIR, "Spread_Boxplot.png")
+    plt.savefig(spread_box_plot_path, dpi=300)
+    plt.close()
     
     # Plot 2: Bar chart of Avg Spread
     plt.figure(figsize=(10, 6))
@@ -279,7 +298,8 @@ def plot_score_variation():
     plt.savefig(spread_plot_path, dpi=300)
     plt.close()
     
-    print(f"\nPlots successfully saved to:\n- {os.path.abspath(cv_plot_path)}\n- {os.path.abspath(sd_plot_path)}\n- {os.path.abspath(spread_plot_path)}")
+    print(f"\nPlots successfully saved to:\n- {os.path.abspath(cv_plot_path)}\n- {os.path.abspath(sd_plot_path)}\n- {os.path.abspath(spread_box_plot_path)}\n- {os.path.abspath(spread_plot_path)}")
+
 
 def plot_coherence_accuracy():
     current_dir = os.path.dirname(os.path.abspath(__file__))
