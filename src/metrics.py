@@ -1,3 +1,4 @@
+import re
 import statistics
 import string
 
@@ -6,15 +7,28 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 
-nltk.download("stopwords", quiet=True)
-nltk.download("wordnet", quiet=True)
+try:
+    _STOP_WORDS = set(stopwords.words("english"))
+except LookupError:
+    nltk.download("stopwords", quiet=True)
+    _STOP_WORDS = set(stopwords.words("english"))
 
-_STOP_WORDS = set(stopwords.words("english"))
-_LEMMATIZER = WordNetLemmatizer()
+try:
+    _LEMMATIZER = WordNetLemmatizer()
+    _LEMMATIZER.lemmatize("test")
+except LookupError:
+    nltk.download("wordnet", quiet=True)
+    _LEMMATIZER = WordNetLemmatizer()
+
+
+def _clean_prefix(sentence: str) -> str:
+    """Remove reference numbering prefix (e.g., 'Reference 1:') added during judge dataset creation."""
+    return re.sub(r"^\s*reference\s+[\w\d]+\s*:\s*", "", sentence, flags=re.IGNORECASE)
 
 
 def _preprocess(sentence: str) -> set[str]:
-    tokens = word_tokenize(sentence.lower())
+    cleaned = _clean_prefix(sentence)
+    tokens = word_tokenize(cleaned.lower())
     tokens = [t for t in tokens if t not in string.punctuation]
     tokens = [_LEMMATIZER.lemmatize(t) for t in tokens if t not in _STOP_WORDS]
     return set(tokens)
