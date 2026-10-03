@@ -101,8 +101,8 @@ def plot_self_enchantment(data_llama: dict | None, data_gemma: dict | None, outp
     box_records = []
 
     configs = [
-        ("LLaMA-3.2-3B", data_llama),
-        ("Gemma-3-1B", data_gemma)
+        ("Llama-3.2-3B-Instruct", data_llama),
+        ("Gemma-3-1B-IT", data_gemma)
     ]
 
     for judge_label, data in configs:
@@ -167,7 +167,7 @@ def plot_self_enchantment(data_llama: dict | None, data_gemma: dict | None, outp
 
     # Panel 2: Distribution of Per-Question Deltas
     df_delta = df_box[df_box["Type"] == "Delta (Self - Other)"]
-    palette_delta = {"LLaMA-3.2-3B": "#2b5c8f", "Gemma-3-1B": "#d95f02"}
+    palette_delta = {"Llama-3.2-3B-Instruct": "#2b5c8f", "Gemma-3-1B-IT": "#d95f02"}
     
     sns.boxplot(data=df_delta, x="Judge", y="Score", hue="Judge", ax=ax_box, palette=palette_delta, legend=False, width=0.45, boxprops=dict(alpha=0.85))
     sns.stripplot(data=df_delta, x="Judge", y="Score", ax=ax_box, color="black", alpha=0.5, jitter=0.2, size=5)
@@ -202,8 +202,8 @@ def plot_compassion_fade(data_llama: dict | None, data_gemma: dict | None, outpu
 
     bar_records = []
     configs = [
-        ("LLaMA-3.2-3B Judge", data_llama),
-        ("Gemma-3-1B Judge", data_gemma)
+        ("Llama-3.2-3B-Instruct Judge", data_llama),
+        ("Gemma-3-1B-IT Judge", data_gemma)
     ]
 
     for label, d in configs:
@@ -319,10 +319,10 @@ def plot_length_bias(data_length: dict | None, output_dir: Path) -> Path | None:
 
     # Rename keys for clear presentation
     label_map = {
-        "gemma3:1b": "Gemma-3-1B",
-        "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "LLaMA-3.2-3B",
-        "ministral-3:3b": "Ministral-3-3B",
-        "qwen3.5:2b": "Qwen-3.5-2B",
+        "gemma3:1b": "Gemma-3-1B-IT",
+        "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+        "ministral-3:3b": "Ministral-3-3B-Instruct",
+        "qwen3.5:2b": "Qwen-3.5-2B-Instruct",
         "LLM_Average": "LLM Consensus Avg",
         "Human": "Human Feedback"
     }
@@ -341,7 +341,7 @@ def plot_length_bias(data_length: dict | None, output_dir: Path) -> Path | None:
 
     df = pd.DataFrame(records)
     # Order: LLMs first, then LLM Average, then Human
-    eval_order = ["Gemma-3-1B", "LLaMA-3.2-3B", "Ministral-3-3B", "Qwen-3.5-2B", "LLM Consensus Avg", "Human Feedback"]
+    eval_order = ["Gemma-3-1B-IT", "Llama-3.2-3B-Instruct", "Ministral-3-3B-Instruct", "Qwen-3.5-2B-Instruct", "LLM Consensus Avg", "Human Feedback"]
     df["Order"] = df["Evaluator"].map(lambda e: eval_order.index(e) if e in eval_order else 99)
     df = df.sort_values("Order").reset_index(drop=True)
 
@@ -403,14 +403,14 @@ def plot_length_bias_by_task(data_length: dict | None, output_dir: Path) -> Path
     ingr_dict = by_task.get("ingredients", {})
 
     label_map = {
-        "gemma3:1b": "Gemma-3-1B",
-        "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "LLaMA-3.2-3B",
-        "ministral-3:3b": "Ministral-3-3B",
-        "qwen3.5:2b": "Qwen-3.5-2B",
+        "gemma3:1b": "Gemma-3-1B-IT",
+        "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+        "ministral-3:3b": "Ministral-3-3B-Instruct",
+        "qwen3.5:2b": "Qwen-3.5-2B-Instruct",
         "LLM_Average": "LLM Consensus",
         "Human": "Human Feedback"
     }
-    eval_order = ["Gemma-3-1B", "LLaMA-3.2-3B", "Ministral-3-3B", "Qwen-3.5-2B", "LLM Consensus", "Human Feedback"]
+    eval_order = ["Gemma-3-1B-IT", "Llama-3.2-3B-Instruct", "Ministral-3-3B-Instruct", "Qwen-3.5-2B-Instruct", "LLM Consensus", "Human Feedback"]
 
     def build_df(source_dict):
         rows = []
@@ -561,7 +561,7 @@ def plot_biases_summary_dashboard(
     (ax1, ax2), (ax3, ax4) = axes
 
     # --- PANEL A: Self-Enchantment Bias ---
-    configs_se = [("LLaMA-3.2-3B", data_se_llama), ("Gemma-3-1B", data_se_gemma)]
+    configs_se = [("Llama-3.2-3B-Instruct", data_se_llama), ("Gemma-3-1B-IT", data_se_gemma)]
     se_judges = [c[0] for c in configs_se if c[1]]
     se_self = [c[1]["summary"]["mean_self_score"] for c in configs_se if c[1]]
     se_other = [c[1]["summary"]["mean_other_score"] for c in configs_se if c[1]]
@@ -586,7 +586,7 @@ def plot_biases_summary_dashboard(
     ax1.legend(loc="lower right")
 
     # --- PANEL B: Attribution / Compassion-Fade Framing ---
-    configs_cf = [("LLaMA-3.2-3B", data_cf_llama), ("Gemma-3-1B", data_cf_gemma)]
+    configs_cf = [("Llama-3.2-3B-Instruct", data_cf_llama), ("Gemma-3-1B-IT", data_cf_gemma)]
     cf_judges = [c[0] for c in configs_cf if c[1]]
     cf_neutral = [c[1]["summary"]["mean_neutral_score"] for c in configs_cf if c[1]]
     cf_ai = [c[1]["summary"]["mean_ai_score"] for c in configs_cf if c[1]]
@@ -609,14 +609,14 @@ def plot_biases_summary_dashboard(
     if data_len:
         by_j = data_len.get("summary_by_judge", {})
         label_map = {
-            "gemma3:1b": "Gemma-3-1B",
-            "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "LLaMA-3.2-3B",
-            "ministral-3:3b": "Ministral-3-3B",
-            "qwen3.5:2b": "Qwen-3.5-2B",
+            "gemma3:1b": "Gemma-3-1B-IT",
+            "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+            "ministral-3:3b": "Ministral-3-3B-Instruct",
+            "qwen3.5:2b": "Qwen-3.5-2B-Instruct",
             "LLM_Average": "LLM Consensus",
             "Human": "Human Feedback"
         }
-        eval_order = ["Gemma-3-1B", "LLaMA-3.2-3B", "Ministral-3-3B", "Qwen-3.5-2B", "LLM Consensus", "Human Feedback"]
+        eval_order = ["Gemma-3-1B-IT", "Llama-3.2-3B-Instruct", "Ministral-3-3B-Instruct", "Qwen-3.5-2B-Instruct", "LLM Consensus", "Human Feedback"]
         rates = []
         names = []
         is_human = []

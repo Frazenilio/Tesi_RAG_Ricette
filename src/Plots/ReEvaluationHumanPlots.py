@@ -25,32 +25,32 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "ReEvaluati
 
 # Generator model order and display mapping
 CANONICAL_MODEL_ORDER = [
-    "Gemma 3 1B",
-    "Granite 4.1 3B",
-    "Llama 3.2 3B",
-    "Ministral 3 3B",
-    "Qwen 3.5 4B",
+    "Gemma-3-1B-IT",
+    "Granite-4.1-3B-Instruct",
+    "Llama-3.2-3B-Instruct",
+    "Ministral-3-3B-Instruct",
+    "Qwen-3.5-4B-Instruct",
 ]
 
 GENERATOR_DISPLAY_NAMES = {
-    "gemma3_1b": "Gemma 3 1B",
-    "gemma3:1b": "Gemma 3 1B",
-    "granite4.1_3b": "Granite 4.1 3B",
-    "granite4.1:3b": "Granite 4.1 3B",
-    "hf.co_bartowski_Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "ministral-3_3b": "Ministral 3 3B",
-    "ministral-3:3b": "Ministral 3 3B",
-    "qwen3.5_4b": "Qwen 3.5 4B",
-    "qwen3.5:4b": "Qwen 3.5 4B",
+    "gemma3_1b": "Gemma-3-1B-IT",
+    "gemma3:1b": "Gemma-3-1B-IT",
+    "granite4.1_3b": "Granite-4.1-3B-Instruct",
+    "granite4.1:3b": "Granite-4.1-3B-Instruct",
+    "hf.co_bartowski_Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "ministral-3_3b": "Ministral-3-3B-Instruct",
+    "ministral-3:3b": "Ministral-3-3B-Instruct",
+    "qwen3.5_4b": "Qwen-3.5-4B-Instruct",
+    "qwen3.5:4b": "Qwen-3.5-4B-Instruct",
 }
 
 MODEL_COLORS = {
-    "Llama 3.2 3B": "#2980b9",
-    "Gemma 3 1B": "#d35400",
-    "Granite 4.1 3B": "#7f8c8d",
-    "Ministral 3 3B": "#c0392b",
-    "Qwen 3.5 4B": "#16a085",
+    "Llama-3.2-3B-Instruct": "#2980b9",
+    "Gemma-3-1B-IT": "#d35400",
+    "Granite-4.1-3B-Instruct": "#7f8c8d",
+    "Ministral-3-3B-Instruct": "#c0392b",
+    "Qwen-3.5-4B-Instruct": "#16a085",
 }
 
 # Evaluator colors
@@ -219,7 +219,7 @@ def plot_correctness_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300) -
         )
         ax.set_ylabel("Average Score (0–100 Scale)", fontsize=12, fontweight="bold")
         ax.set_xticks(x)
-        ax.set_xticklabels(models, fontsize=11, fontweight="bold")
+        ax.set_xticklabels(models, rotation=15, ha="right", fontsize=10.5, fontweight="bold")
         ax.set_ylim(0, 118)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.35, linewidth=1)
         ax.legend(loc="upper right", frameon=True, fontsize=11)
@@ -357,7 +357,7 @@ def plot_distributions_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300)
         ax.set_ylabel("Score (0–100 Scale)", fontsize=12, fontweight="bold")
         ax.set_xlabel("Generator LLM", fontsize=12, fontweight="bold")
         ax.set_xticks(range(len(models)))
-        ax.set_xticklabels(models, fontsize=11, fontweight="bold")
+        ax.set_xticklabels(models, rotation=15, ha="right", fontsize=10.5, fontweight="bold")
         ax.set_ylim(-5, 110)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.3)
         ax.legend(loc="lower left", frameon=True, fontsize=11)
@@ -595,7 +595,7 @@ def plot_high_human_degradation(
         )
         ax.set_ylabel("Average Judge Score (0–100 Scale)", fontsize=12, fontweight="bold")
         ax.set_xticks(x)
-        ax.set_xticklabels(x_labels, fontsize=10.5, fontweight="bold")
+        ax.set_xticklabels(x_labels, rotation=15, ha="right", fontsize=10.5, fontweight="bold")
         ax.set_ylim(0, 110)
         ax.axhline(100, color="gray", linestyle="--", alpha=0.35, linewidth=1)
         ax.legend(loc="upper right", frameon=True, fontsize=11)

@@ -24,10 +24,10 @@ COLOR_AVG_JUDGE = "#34495e"  # Dark Slate Navy (Consensus / Avg Judges)
 # API Judge Model Mapping from src/APIRequests/APIModels.py
 # (for Qwen, Groq is used as specified)
 API_JUDGE_MODELS: dict[str, str] = {
-    Model.GEMMA.value: "Gemma 4 26b:a4b",       # "google/gemma-4-26b-a4b-it:free"
-    Model.QWEN.value: "Qwen 3.6:27b",          # "qwen/qwen3.6-27b"
-    Model.LLAMA.value: "Llama 3.1:8b instant", # "llama-3.1-8b-instant"
-    Model.GPT.value: "GPT-OSS 20b",            # "openai/gpt-oss-20b"
+    Model.GEMMA.value: "Gemma-4-26B-A4B-IT",       # "google/gemma-4-26b-a4b-it:free"
+    Model.QWEN.value: "Qwen-3.6-27B",              # "qwen/qwen3.6-27b"
+    Model.LLAMA.value: "Llama-3.1-8B-Instant",     # "llama-3.1-8b-instant"
+    Model.GPT.value: "GPT-OSS-20B",                # "openai/gpt-oss-20b"
 }
 
 # Judge Model Palette for API Judges
@@ -67,11 +67,11 @@ RAG_GENERATOR_ORDER = [
 ]
 
 RAG_GENERATOR_LABELS = {
-    "Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "gemma3:1b": "Gemma 3 1B",
-    "granite4.1:3b": "Granite 4.1 3B",
-    "ministral-3:3b": "Ministral 3 3B",
-    "qwen3.5:4b": "Qwen 3.5 4B",
+    "Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "gemma3:1b": "Gemma-3-1B-IT",
+    "granite4.1:3b": "Granite-4.1-3B-Instruct",
+    "ministral-3:3b": "Ministral-3-3B-Instruct",
+    "qwen3.5:4b": "Qwen-3.5-4B-Instruct",
 }
 
 TASKS = [("ingredients", "Ingredients"), ("directions", "Directions")]
@@ -98,6 +98,7 @@ def setup_style():
 def load_and_extract_data(
     judges_csv: Path = DEFAULT_JUDGES_CSV,
     dataset_csv: Path = DEFAULT_DATASET_CSV,
+    max_score: float = 100.0,
 ) -> pd.DataFrame:
     """Loads API judge scores from CSV and merges with main dataset to get Human scores and generator metadata."""
     judges_csv = Path(judges_csv)
@@ -131,7 +132,8 @@ def load_and_extract_data(
 
     rows = []
     for _, r in merged.iterrows():
-        human_score = float(r["Human Numeric Score"]) if pd.notna(r.get("Human Numeric Score")) else np.nan
+        raw_human = float(r["Human Numeric Score"]) if pd.notna(r.get("Human Numeric Score")) else np.nan
+        human_score = (raw_human / 100.0) * max_score if not np.isnan(raw_human) else np.nan
         rag_model = r.get("RAG Model Name", "unknown")
         rag_model_short = rag_model.split("/")[-1]
 
@@ -158,7 +160,13 @@ def load_and_extract_data(
     return df
 
 
-def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300) -> list[Path]:
+def plot_overall_task_comparison_split(
+    df: pd.DataFrame,
+    output_dir: Path,
+    max_score: float = 100.0,
+    scale_suffix: str = "",
+    dpi: int = 300,
+) -> list[Path]:
     """Plot 1 (Split): Overall benchmark (Human, Consensus Judges, Individual Judges) for Ingredients and Directions."""
     saved_paths = []
     judge_cols = [c for c in df.columns if c.startswith("judge_")]
@@ -169,6 +177,11 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
     colors = [COLOR_HUMAN, COLOR_AVG_JUDGE] + [
         JUDGE_COLORS.get(c.replace("judge_", ""), "#7f8c8d") for c in judge_cols
     ]
+
+    fmt = "{:.1f}" if max_score == 100 else "{:.2f}"
+    y_pos_pad = max_score * 0.018
+    y_lim = max_score * 1.15
+    scale_label = f"0 – {int(max_score) if max_score >= 1 else max_score}"
 
     for t_key, t_title in TASKS:
         fig, ax = plt.subplots(figsize=(10, 6.5))
@@ -192,9 +205,9 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
 
         for rect, mean, sem in zip(rects, means, sems):
             if mean > 0:
-                y_pos = mean + (sem if not np.isnan(sem) else 0) + 1.8
+                y_pos = mean + (sem if not np.isnan(sem) else 0) + y_pos_pad
                 ax.annotate(
-                    f"{mean:.1f}",
+                    fmt.format(mean),
                     xy=(rect.get_x() + rect.get_width() / 2, y_pos),
                     ha="center",
                     va="bottom",
@@ -206,16 +219,27 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
         ax.set_title(f"Evaluation Benchmark: {t_title}\nHuman Ground Truth and LLM Judges", pad=14)
         ax.set_xticks(x)
         ax.set_xticklabels(metric_labels, rotation=20, ha="right", fontsize=11, fontweight="bold")
-        ax.set_ylabel("Score (0 – 100 Scale)", fontsize=12, fontweight="bold")
-        ax.set_ylim(0, 115)
-        ax.axhline(100, color="gray", linestyle="--", alpha=0.3, linewidth=1)
+        ax.set_ylabel(f"Score ({scale_label} Scale)", fontsize=12, fontweight="bold")
+        ax.set_ylim(0, y_lim)
+        ax.axhline(max_score, color="gray", linestyle="--", alpha=0.3, linewidth=1)
 
         plt.tight_layout()
-        out_path = output_dir / f"human_judges_{t_key}.png"
+        if scale_suffix:
+            out_path = output_dir / f"human_judges_{t_key}_{scale_suffix}.png"
+        else:
+            out_path = output_dir / f"human_judges_{t_key}.png"
         fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
         print(f"Saved: {out_path}")
         saved_paths.append(out_path)
+
+        if scale_suffix == "0_100":
+            # also save as base name for compatibility
+            base_path = output_dir / f"human_judges_{t_key}.png"
+            fig.savefig(base_path, dpi=dpi, bbox_inches="tight")
+            print(f"Saved: {base_path}")
+            saved_paths.append(base_path)
+
+        plt.close(fig)
 
     # Combined overview
     fig, ax = plt.subplots(figsize=(12, 7))
@@ -239,24 +263,121 @@ def plot_overall_task_comparison_split(df: pd.DataFrame, output_dir: Path, dpi: 
         rects = ax.bar(x + offset, means, width, yerr=sems, capsize=4, label=mlabel, color=col, edgecolor="white", linewidth=1.2, alpha=0.92)
         for rect, mean, sem in zip(rects, means, sems):
             if mean > 0:
-                y_pos = mean + (sem if not np.isnan(sem) else 0) + 1.5
-                ax.annotate(f"{mean:.1f}", xy=(rect.get_x() + rect.get_width() / 2, y_pos), ha="center", va="bottom", fontsize=8.5, fontweight="bold", color="#2c3e50")
+                y_pos = mean + (sem if not np.isnan(sem) else 0) + (max_score * 0.015)
+                ax.annotate(fmt.format(mean), xy=(rect.get_x() + rect.get_width() / 2, y_pos), ha="center", va="bottom", fontsize=8.5, fontweight="bold", color="#2c3e50")
 
     ax.set_title("Evaluation Benchmark: Human Score and LLM Judges\nDivided by Task (Ingredients vs. Directions)", pad=18, fontsize=14, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(task_labels, fontsize=12, fontweight="bold")
-    ax.set_ylabel("Score (0 – 100 Scale)", fontsize=11, fontweight="bold")
-    ax.set_ylim(0, 115)
-    ax.axhline(100, color="gray", linestyle="--", alpha=0.3, linewidth=1)
+    ax.set_ylabel(f"Score ({scale_label} Scale)", fontsize=11, fontweight="bold")
+    ax.set_ylim(0, y_lim)
+    ax.axhline(max_score, color="gray", linestyle="--", alpha=0.3, linewidth=1)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, frameon=True, facecolor="white", edgecolor="#bdc3c7", fontsize=9.5)
     plt.tight_layout()
-    combined_path = output_dir / "human_judges_by_task.png"
+    if scale_suffix:
+        combined_path = output_dir / f"human_judges_by_task_{scale_suffix}.png"
+    else:
+        combined_path = output_dir / "human_judges_by_task.png"
     fig.savefig(combined_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
     print(f"Saved: {combined_path}")
     saved_paths.append(combined_path)
 
+    if scale_suffix == "0_100":
+        base_combined = output_dir / "human_judges_by_task.png"
+        fig.savefig(base_combined, dpi=dpi, bbox_inches="tight")
+        print(f"Saved: {base_combined}")
+        saved_paths.append(base_combined)
+
+    plt.close(fig)
+
     return saved_paths
+
+
+def plot_cross_scale_human_judges_comparison(
+    output_dir: Path,
+    dataset_csv: Path = DEFAULT_DATASET_CSV,
+    dpi: int = 300,
+) -> list[Path]:
+    """Generates unified 3-panel cross-scale comparison plots (side-by-side subplots for 0-100, 0-10, and 0-1 scales)."""
+    scale_configs = [
+        ("0–100 Scale", PROJECT_ROOT / "data" / "APICalls" / "API_Max100_judges.csv", 100.0, "{:.1f}"),
+        ("0–10 Scale", PROJECT_ROOT / "data" / "APICalls" / "API_Max10_judges.csv", 10.0, "{:.2f}"),
+        ("0–1 Scale", PROJECT_ROOT / "data" / "APICalls" / "API_Max1_judges.csv", 1.0, "{:.2f}"),
+    ]
+
+    dfs = []
+    for title, csv_path, max_val, fmt in scale_configs:
+        if not csv_path.exists() and "Max100" in csv_path.name:
+            fallback = PROJECT_ROOT / "data" / "APICalls" / "API_judges.csv"
+            if fallback.exists():
+                csv_path = fallback
+        df_scale = load_and_extract_data(csv_path, dataset_csv, max_score=max_val)
+        dfs.append((title, df_scale, max_val, fmt))
+
+    saved_paths = []
+    judge_cols = [c for c in dfs[0][1].columns if c.startswith("judge_")]
+    metric_keys = ["human_score", "r1_avg_judge"] + judge_cols
+    metric_labels = ["Human Score", "Avg Judges"] + [
+        JUDGE_LABELS.get(c.replace("judge_", ""), c.replace("judge_", "")) for c in judge_cols
+    ]
+    colors = [COLOR_HUMAN, COLOR_AVG_JUDGE] + [
+        JUDGE_COLORS.get(c.replace("judge_", ""), "#7f8c8d") for c in judge_cols
+    ]
+
+    for t_key, t_title in TASKS:
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6.2))
+
+        for ax, (scale_title, df_scale, max_val, fmt) in zip(axes, dfs):
+            sub = df_scale[df_scale["target_type"] == t_key]
+            means = [sub[m].dropna().mean() if len(sub[m].dropna()) > 0 else 0 for m in metric_keys]
+            sems = [sub[m].dropna().sem() if len(sub[m].dropna()) > 1 else 0 for m in metric_keys]
+            x = np.arange(len(metric_keys))
+
+            rects = ax.bar(
+                x,
+                means,
+                width=0.55,
+                yerr=sems,
+                capsize=4.5,
+                color=colors,
+                edgecolor="white",
+                linewidth=1.2,
+                alpha=0.92,
+            )
+
+            y_pos_pad = max_val * 0.02
+            for rect, mean, sem in zip(rects, means, sems):
+                if mean > 0:
+                    y_pos = mean + (sem if not np.isnan(sem) else 0) + y_pos_pad
+                    ax.annotate(
+                        fmt.format(mean),
+                        xy=(rect.get_x() + rect.get_width() / 2, y_pos),
+                        ha="center",
+                        va="bottom",
+                        fontsize=10,
+                        fontweight="bold",
+                        color="#2c3e50",
+                    )
+
+            ax.set_title(f"{scale_title}", fontsize=13, fontweight="bold", pad=12, color="#2c3e50")
+            ax.set_xticks(x)
+            ax.set_xticklabels(metric_labels, rotation=25, ha="right", fontsize=9.5, fontweight="bold")
+            scale_label = f"0 – {int(max_val) if max_val >= 1 else max_val}"
+            ax.set_ylabel(f"Score ({scale_label})", fontsize=11, fontweight="bold")
+            ax.set_ylim(0, max_val * 1.15)
+            ax.axhline(max_val, color="gray", linestyle="--", alpha=0.35, linewidth=1)
+            ax.grid(axis="y", linestyle=":", alpha=0.6)
+
+        fig.suptitle(f"Evaluation Benchmark: {t_title} Across All Scales (Human vs. LLM Judges)", fontsize=15, fontweight="bold", y=0.99)
+        plt.tight_layout()
+        out_path = output_dir / f"human_judges_{t_key}_all_scales.png"
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved: {out_path}")
+        saved_paths.append(out_path)
+
+    return saved_paths
+
 
 
 def plot_per_judge_model_breakdown_split(df: pd.DataFrame, output_dir: Path, dpi: int = 300) -> list[Path]:
@@ -598,10 +719,24 @@ def main():
     print(f"Loaded {len(df)} evaluated instances across {df['gen_model_short'].nunique()} generator models and {len([c for c in df.columns if c.startswith('judge_')])} judge models.")
 
     print("\n--- Generating Split & High-Resolution Judge Comparison Plots ---")
-    plot_overall_task_comparison_split(df, args.output_dir, args.dpi)
+    plot_overall_task_comparison_split(df, args.output_dir, max_score=100.0, scale_suffix="0_100", dpi=args.dpi)
     plot_per_judge_model_breakdown_split(df, args.output_dir, args.dpi)
     plot_generator_models_breakdown_split(df, args.output_dir, args.dpi)
     plot_correlation_heatmaps_split(df, args.output_dir, args.dpi)
+
+    # Process other scales for overall benchmark
+    scales_additional = [
+        (PROJECT_ROOT / "data" / "APICalls" / "API_Max10_judges.csv", 10.0, "0_10"),
+        (PROJECT_ROOT / "data" / "APICalls" / "API_Max1_judges.csv", 1.0, "0_1"),
+    ]
+    for csv_file, max_val, s_suffix in scales_additional:
+        if csv_file.exists():
+            print(f"\nProcessing scale {s_suffix} from {csv_file.name}...")
+            df_scale = load_and_extract_data(csv_file, args.dataset_csv, max_score=max_val)
+            plot_overall_task_comparison_split(df_scale, args.output_dir, max_score=max_val, scale_suffix=s_suffix, dpi=args.dpi)
+
+    print("\nGenerating cross-scale comparison plots...")
+    plot_cross_scale_human_judges_comparison(args.output_dir, args.dataset_csv, dpi=args.dpi)
 
     print("\nAll judge comparison plots successfully generated in:", args.output_dir)
 

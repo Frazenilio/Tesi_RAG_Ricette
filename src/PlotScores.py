@@ -10,10 +10,27 @@ ROOT_DIR = Path(__file__).parent.parent
 INPUT_CSV = ROOT_DIR / "data" / "judgement_dataset.csv"
 OUTPUT_PLOT_DIR = ROOT_DIR / "data" / "Boxplots" 
 
+# Visual and Model Mappings
+JUDGE_DISPLAY_NAMES = {
+    "GEMMA": "Gemma-4-26B-A4B-IT",
+    "QWEN": "Qwen-3.6-27B",
+    "LLAMA": "Llama-3.1-8B-Instant",
+    "GPT": "GPT-OSS-20B",
+}
+
+# Cohesive palette matching thesis plots (e.g. JudgeComparisonPlots.py)
+PALETTE = {
+    "Human Feedback": "#27ae60",       # Emerald Green
+    "Gemma-4-26B-A4B-IT": "#d35400",   # Burnt Orange
+    "Qwen-3.6-27B": "#16a085",         # Teal
+    "Llama-3.1-8B-Instant": "#2980b9", # Ocean Blue
+    "GPT-OSS-20B": "#8e44ad",          # Royal Purple
+}
+
 # Dictionary mapping API CSV filenames (inside the data/APICalls/ folder) 
 # to a tuple containing (Output Plot Filename, Max Score for Scaling).
 CSV_FILES = {
-    "API_judges.csv": ("API_Judges_0_100_Boxplot.png", 100),
+    "API_Max100_judges.csv": ("API_Judges_0_100_Boxplot.png", 100),
     "API_Max10_judges.csv": ("API_Judges_0_10_Boxplot.png", 10),
     "API_Max1_judges.csv": ("API_Judges_0_1_Boxplot.png", 1)
 }
@@ -32,6 +49,11 @@ def main():
     
     for csv_name, (plot_name, max_score) in CSV_FILES.items():
         api_csv_path = ROOT_DIR / "data" / "APICalls" / csv_name
+        if not api_csv_path.exists() and csv_name == "API_Max100_judges.csv":
+            fallback = ROOT_DIR / "data" / "APICalls" / "API_judges.csv"
+            if fallback.exists():
+                api_csv_path = fallback
+        
         output_plot_path = OUTPUT_PLOT_DIR / plot_name
         
         if not api_csv_path.exists():
@@ -71,7 +93,8 @@ def main():
             if model_name_col in df.columns:
                 valid_names = df[model_name_col].dropna()
                 if not valid_names.empty:
-                    model_name = str(valid_names.iloc[0])
+                    raw_name = str(valid_names.iloc[0]).strip()
+                    model_name = JUDGE_DISPLAY_NAMES.get(raw_name.upper(), raw_name)
                     
             # Append scores
             for score in df[score_col]:
@@ -90,11 +113,16 @@ def main():
             
         print(f"Plotting {len(df_plot)} total scores for {csv_name}...")
         
-        # Define evaluator order: Human Feedback first, then the rest
-        unique_evals = df_plot["Evaluator"].unique().tolist()
-        if "Human Feedback" in unique_evals:
-            unique_evals.remove("Human Feedback")
-        evaluators_order = ["Human Feedback"] + unique_evals
+        # Define evaluator order: Human Feedback first, then judges in standard order
+        canonical_order = [
+            "Human Feedback",
+            "Gemma-4-26B-A4B-IT",
+            "Qwen-3.6-27B",
+            "Llama-3.1-8B-Instant",
+            "GPT-OSS-20B"
+        ]
+        present_evals = df_plot["Evaluator"].unique().tolist()
+        evaluators_order = [e for e in canonical_order if e in present_evals] + [e for e in present_evals if e not in canonical_order]
         
         # 4. Plot using seaborn if available, otherwise fallback to pandas/matplotlib
         plt.figure(figsize=(10, 6))
@@ -102,7 +130,16 @@ def main():
         try:
             import seaborn as sns
             sns.set_theme(style="whitegrid")
-            sns.boxplot(x="Evaluator", y="Score", hue="Evaluator", data=df_plot, palette="Set2", order=evaluators_order, legend=False)
+            sns.boxplot(
+                x="Evaluator",
+                y="Score",
+                hue="Evaluator",
+                data=df_plot,
+                palette=PALETTE,
+                order=evaluators_order,
+                legend=False,
+                width=0.55
+            )
         except ImportError:
             print("Seaborn not found, falling back to Pandas built-in boxplot.")
             # Pandas boxplot is tricky to order, so we convert column to Categorical to force order
@@ -110,15 +147,16 @@ def main():
             df_plot.boxplot(column="Score", by="Evaluator", grid=True, figsize=(10, 6), ax=plt.gca())
             plt.suptitle("") # Remove default pandas title
         
-        plt.title(f"Score Distribution: Human Feedback vs. LLM Judges ({csv_name})", fontsize=14)
-        plt.xlabel("Evaluator", fontsize=12)
-        plt.ylabel("Numeric Score", fontsize=12)
+        plt.title("Score Distribution: Human Feedback vs. LLM Judges", fontsize=14, fontweight="bold", pad=12)
+        plt.xlabel("Evaluator", fontsize=12, fontweight="bold")
+        plt.ylabel("Numeric Score", fontsize=12, fontweight="bold")
+        plt.xticks(fontsize=10.5)
         
         # Dynamically set y-limits with a little padding
         min_score = df_plot["Score"].min()
-        max_score = df_plot["Score"].max()
-        padding = (max_score - min_score) * 0.05 if max_score != min_score else 1
-        plt.ylim(min_score - padding, max_score + padding)
+        max_score_val = df_plot["Score"].max()
+        padding = (max_score_val - min_score) * 0.05 if max_score_val != min_score else 1
+        plt.ylim(min_score - padding, max_score_val + padding)
         
         # Adjust layout
         plt.tight_layout()
@@ -128,7 +166,6 @@ def main():
         print(f"Plot successfully saved to {output_plot_path.absolute()}\n")
         
         # We close the figure here so it doesn't overlap for the next CSV in the loop
-        # We don't call plt.show() here to prevent the script from pausing mid-loop
         plt.close()
 
 def plot_score_variation():
@@ -171,6 +208,9 @@ def plot_score_variation():
                     
                     if pd.isna(model_name) or raw_score == -1:
                         continue
+                        
+                    raw_name = str(model_name).strip()
+                    model_name = JUDGE_DISPLAY_NAMES.get(raw_name.upper(), raw_name)
                         
                     try:
                         scaled_score = (float(raw_score) / max_score) * 100.0
@@ -320,6 +360,7 @@ def plot_coherence_accuracy():
     
     # Merge on original_row to bring in the True Human Correctness string
     df_merged = pd.merge(df_coh, df_judge[["original_row", "Human Correctness"]], on="original_row", how="inner")
+    df_merged["Human Correctness"] = df_merged["Human Correctness"].str.strip().str.lower().str.replace("midway correct", "midway")
     
     accuracies = {}
     distribution_data = []
@@ -331,7 +372,8 @@ def plot_coherence_accuracy():
         if model_col in df_merged.columns and eval_col in df_merged.columns:
             model_names = df_merged[model_col].dropna().unique()
             if len(model_names) == 0: continue
-            model_name = model_names[0]
+            raw_name = str(model_names[0]).strip()
+            model_name = JUDGE_DISPLAY_NAMES.get(raw_name.upper(), raw_name)
             
             valid_rows = df_merged[df_merged[eval_col].notna() & (df_merged[eval_col] != "ERROR")].copy()
             
@@ -413,10 +455,226 @@ def plot_coherence_accuracy():
     dist_plot_path = os.path.join(OUTPUT_PLOT_DIR, "CoherenceDistribution_StackedBar.png")
     plt.savefig(dist_plot_path, dpi=300)
     plt.close()
-    
-    print(f"\nPlots successfully saved to:\n- {os.path.abspath(acc_plot_path)}\n- {os.path.abspath(dist_plot_path)}")
+
+    # Plot 3: 2x2 Grid of Confusion Matrices
+    classes = ['correct', 'midway', 'wrong']
+    # Plot 3: Individual Confusion Matrix per Judge and Combined 2x2 Grid
+    classes = ['correct', 'midway', 'wrong']
+    class_labels = ['Correct', 'Midway', 'Wrong']
+    judge_configs = [
+        ('Judge 1', 'Gemma-4-26B-A4B-IT', 'Gemma', PALETTE['Gemma-4-26B-A4B-IT']),
+        ('Judge 2', 'Qwen-3.6-27B', 'Qwen', PALETTE['Qwen-3.6-27B']),
+        ('Judge 3', 'Llama-3.1-8B-Instant', 'Llama', PALETTE['Llama-3.1-8B-Instant']),
+        ('Judge 4', 'GPT-OSS-20B', 'GPT', PALETTE['GPT-OSS-20B']),
+    ]
+
+    judges_plot_dir = os.path.join(current_dir, 'Plots', 'SavedPlots', 'Judges')
+    individual_paths = []
+
+    # Combined 2x2 figure
+    fig_comb, axes = plt.subplots(2, 2, figsize=(13, 11))
+    axes = axes.flatten()
+
+    for idx, (prefix, model_name, short_name, col) in enumerate(judge_configs):
+        e_col = f'{prefix} Evaluation'
+        if e_col not in df_merged.columns:
+            continue
+        sub = df_merged[['Human Correctness', e_col]].dropna().copy()
+        sub[e_col] = sub[e_col].str.strip().str.lower()
+        sub = sub[sub[e_col].isin(classes)]
+
+        total = len(sub)
+        correct_matches = (sub['Human Correctness'] == sub[e_col]).sum()
+        acc = (correct_matches / total) * 100.0 if total > 0 else 0
+
+        cm = pd.crosstab(sub['Human Correctness'], sub[e_col], rownames=['Human True'], colnames=['Judge Pred'])
+        cm = cm.reindex(index=classes, columns=classes, fill_value=0)
+
+        # 1. Plot on combined 2x2 axes
+        ax = axes[idx]
+        if 'seaborn' in sys.modules:
+            import seaborn as sns
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt='d',
+                cmap='Blues',
+                cbar=True,
+                vmin=0,
+                vmax=30,
+                linewidths=1.2,
+                linecolor='white',
+                annot_kws={'fontsize': 12, 'fontweight': 'bold'},
+                xticklabels=class_labels,
+                yticklabels=class_labels,
+                ax=ax
+            )
+        else:
+            cax = ax.matshow(cm, cmap='Blues')
+            fig_comb.colorbar(cax, ax=ax)
+            for r in range(len(classes)):
+                for c in range(len(classes)):
+                    ax.text(c, r, str(cm.values[r, c]), ha='center', va='center', fontsize=12, fontweight='bold')
+
+        ax.set_title(f'{model_name}', fontsize=13, fontweight='bold', pad=12, color=col)
+        ax.set_xlabel('Predicted Label', fontsize=11, fontweight='bold')
+        ax.set_ylabel('True Human Label', fontsize=11, fontweight='bold')
+        ax.tick_params(axis='x', labelsize=10.5)
+        ax.tick_params(axis='y', labelsize=10.5, rotation=0)
+
+        # 2. Individual Dedicated Figure for this Judge
+        fig_single, ax_single = plt.subplots(figsize=(6.5, 5.5))
+        if 'seaborn' in sys.modules:
+            sns.heatmap(
+                cm,
+                annot=True,
+                fmt='d',
+                cmap='Blues',
+                cbar=True,
+                vmin=0,
+                vmax=30,
+                linewidths=1.2,
+                linecolor='white',
+                annot_kws={'fontsize': 13, 'fontweight': 'bold'},
+                xticklabels=class_labels,
+                yticklabels=class_labels,
+                ax=ax_single
+            )
+        else:
+            cax = ax_single.matshow(cm, cmap='Blues')
+            fig_single.colorbar(cax, ax=ax_single)
+            for r in range(len(classes)):
+                for c in range(len(classes)):
+                    ax_single.text(c, r, str(cm.values[r, c]), ha='center', va='center', fontsize=13, fontweight='bold')
+
+        ax_single.set_title(f'Confusion Matrix: {model_name}', fontsize=13.5, fontweight='bold', pad=12, color=col)
+        ax_single.set_xlabel('Predicted Label', fontsize=11.5, fontweight='bold')
+        ax_single.set_ylabel('True Human Label', fontsize=11.5, fontweight='bold')
+        ax_single.tick_params(axis='x', labelsize=11)
+        ax_single.tick_params(axis='y', labelsize=11, rotation=0)
+        plt.tight_layout()
+
+        single_out = os.path.join(OUTPUT_PLOT_DIR, f"Coherence_Confusion_Matrix_{short_name}.png")
+        fig_single.savefig(single_out, dpi=300, bbox_inches='tight')
+        if os.path.exists(judges_plot_dir):
+            fig_single.savefig(os.path.join(judges_plot_dir, f"Coherence_Confusion_Matrix_{short_name}.png"), dpi=300, bbox_inches='tight')
+        plt.close(fig_single)
+        individual_paths.append(single_out)
+
+    fig_comb.suptitle('Coherence Classification: Confusion Matrices per LLM Judge', fontsize=15, fontweight='bold', y=0.99)
+    plt.tight_layout()
+
+    cm_plot_path = os.path.join(OUTPUT_PLOT_DIR, "Coherence_Confusion_Matrices.png")
+    fig_comb.savefig(cm_plot_path, dpi=300, bbox_inches='tight')
+
+    if os.path.exists(judges_plot_dir):
+        fig_comb.savefig(os.path.join(judges_plot_dir, "Coherence_Confusion_Matrices.png"), dpi=300, bbox_inches='tight')
+
+    plt.close(fig_comb)
+
+    ind_str = "\n- ".join([os.path.abspath(p) for p in individual_paths])
+    print(f"\nPlots successfully saved to:\n- {os.path.abspath(acc_plot_path)}\n- {os.path.abspath(dist_plot_path)}\n- {os.path.abspath(cm_plot_path)}\n- {ind_str}")
+
+
+def plot_histograms():
+    """Generates faceted histograms for all three scales (0-100, 0-10, 0-1)."""
+    if not INPUT_CSV.exists():
+        print(f"Error: Could not find {INPUT_CSV}")
+        return
+
+    OUTPUT_PLOT_DIR.mkdir(parents=True, exist_ok=True)
+    df_human = pd.read_csv(INPUT_CSV)
+    df_human["original_row"] = df_human.index + 2
+
+    scales_config = [
+        ("API_Max100_judges.csv", "API_Judges_0_100_Histogram.png", 100, np.linspace(0, 100, 11), np.arange(0, 101, 10), "{:.0f}"),
+        ("API_Max10_judges.csv", "API_Judges_0_10_Histogram.png", 10, np.linspace(0, 10, 11), np.arange(0, 11, 1), "{:.0f}"),
+        ("API_Max1_judges.csv", "API_Judges_0_1_Histogram.png", 1, np.linspace(0, 1, 11), np.round(np.arange(0, 1.05, 0.1), 1), "{:.1f}"),
+    ]
+
+    evaluator_info = [
+        ("Human Feedback", "Human", PALETTE["Human Feedback"]),
+        ("Gemma-4-26B-A4B-IT", "Judge 1", PALETTE["Gemma-4-26B-A4B-IT"]),
+        ("Qwen-3.6-27B", "Judge 2", PALETTE["Qwen-3.6-27B"]),
+        ("Llama-3.1-8B-Instant", "Judge 3", PALETTE["Llama-3.1-8B-Instant"]),
+        ("GPT-OSS-20B", "Judge 4", PALETTE["GPT-OSS-20B"]),
+    ]
+
+    for csv_name, plot_name, max_score, bins, xticks, tick_fmt in scales_config:
+        csv_path = ROOT_DIR / "data" / "APICalls" / csv_name
+        if not csv_path.exists() and csv_name == "API_Max100_judges.csv":
+            fallback = ROOT_DIR / "data" / "APICalls" / "API_judges.csv"
+            if fallback.exists():
+                csv_path = fallback
+
+        if not csv_path.exists():
+            print(f"Skipping histogram for {csv_name}: File not found.")
+            continue
+
+        df_api = pd.read_csv(csv_path)
+        merged = pd.merge(df_api, df_human[["original_row", "Human Numeric Score"]], on="original_row")
+
+        fig, axes = plt.subplots(5, 1, figsize=(10, 12), sharey=True)
+
+        for ax, (disp_name, prefix, col) in zip(axes, evaluator_info):
+            if prefix == "Human":
+                raw_scores = merged["Human Numeric Score"].astype(float)
+                scores = (raw_scores / 100.0) * max_score
+            else:
+                col_name = f"{prefix} Numeric Score"
+                scores = merged[col_name].astype(float)
+
+            # Plot histogram counts within expected range
+            counts, edges, patches = ax.hist(
+                scores,
+                bins=bins,
+                range=(0, max_score),
+                color=col,
+                alpha=0.85,
+                edgecolor="white",
+                linewidth=1.2,
+                rwidth=0.9,
+            )
+
+            # Annotate counts on top of bars
+            bin_width = bins[1] - bins[0]
+            for count, edge in zip(counts, edges):
+                if count > 0:
+                    ax.text(
+                        edge + bin_width / 2,
+                        count + 1.2,
+                        f"{int(count)}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=9.5,
+                        fontweight="bold",
+                        color="#2c3e50",
+                    )
+
+
+            ax.set_ylabel("Recipes", fontsize=10.5, fontweight="bold")
+            ax.set_title(disp_name, fontsize=12, fontweight="bold", loc="left", pad=4, color="#2c3e50")
+            ax.grid(axis="y", linestyle=":", alpha=0.6)
+            ax.set_ylim(0, 82)
+            ax.set_xlim(-bin_width * 0.4, max_score + bin_width * 0.4)
+
+            # Ensure numbers are shown on EVERY x-axis
+            ax.set_xticks(xticks)
+            ax.set_xticklabels([tick_fmt.format(x) for x in xticks], fontsize=10.5)
+            ax.tick_params(labelbottom=True)
+
+        axes[-1].set_xlabel(f"Numeric Score (0 – {max_score})", fontsize=12, fontweight="bold")
+
+        plt.suptitle("Score Distribution: Human vs LLM judges", fontsize=14, fontweight="bold", y=0.995)
+        plt.tight_layout()
+        out_path = OUTPUT_PLOT_DIR / plot_name
+        fig.savefig(out_path, dpi=300)
+        plt.close(fig)
+        print(f"Histogram successfully saved to {out_path.absolute()}")
+
 
 if __name__ == "__main__":
     main()
+    plot_histograms()
     plot_score_variation()
     plot_coherence_accuracy()

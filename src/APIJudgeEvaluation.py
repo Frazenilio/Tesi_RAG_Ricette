@@ -50,8 +50,13 @@ def parse_response(raw_response: str) -> tuple[float, str]:
     """Extracts Decision and Explanation from the raw API response."""
     # Find Decision
     score = -1.0
-    # This allows things like "**Decision:**", "Decision :", or "Decision: The score is 100"
-    score_match = re.search(r"(?i)Decision[^\d]*(\d+(?:\.\d+)?)", raw_response)
+    # Match Decision followed by a number on the same line (prevents jumping into multi-line explanation text)
+    score_match = re.search(r"(?i)Decision[^\d\n]*(\d+(?:\.\d+)?)", raw_response)
+    if not score_match:
+        # Fallback to last occurrence of Decision or Score followed by number
+        matches = list(re.finditer(r"(?i)(?:Decision|Score)[^\d\n]*(\d+(?:\.\d+)?)", raw_response))
+        if matches:
+            score_match = matches[-1]
     if score_match:
         try:
             score = float(score_match.group(1))

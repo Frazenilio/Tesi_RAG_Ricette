@@ -32,11 +32,11 @@ MODEL_ORDER = [
 ]
 
 MODEL_LABELS = {
-    "Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "gemma3:1b": "Gemma 3 1B",
-    "granite4.1:3b": "Granite 4.1 3B",
-    "ministral-3:3b": "Ministral 3 3B",
-    "qwen3.5:4b": "Qwen 3.5 4B",
+    "Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "gemma3:1b": "Gemma-3-1B-IT",
+    "granite4.1:3b": "Granite-4.1-3B-Instruct",
+    "ministral-3:3b": "Ministral-3-3B-Instruct",
+    "qwen3.5:4b": "Qwen-3.5-4B-Instruct",
 }
 
 MODEL_COLORS = {

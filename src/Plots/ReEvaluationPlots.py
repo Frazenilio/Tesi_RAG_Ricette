@@ -36,33 +36,33 @@ ALLOWED_GENERATOR_FOLDERS = [
 
 # Canonical display order for generator models
 CANONICAL_MODEL_ORDER = [
-    "Gemma 3 1B",
-    "Granite 4.1 3B",
-    "Llama 3.2 3B",
-    "Ministral 3 3B",
-    "Qwen 3.5 4B",
+    "Gemma-3-1B-IT",
+    "Granite-4.1-3B-Instruct",
+    "Llama-3.2-3B-Instruct",
+    "Ministral-3-3B-Instruct",
+    "Qwen-3.5-4B-Instruct",
 ]
 
 # Display names for generator models
 GENERATOR_DISPLAY_NAMES = {
-    "gemma3_1b": "Gemma 3 1B",
-    "gemma3:1b": "Gemma 3 1B",
-    "granite4.1_3b": "Granite 4.1 3B",
-    "granite4.1:3b": "Granite 4.1 3B",
-    "hf.co_bartowski_Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "ministral-3_3b": "Ministral 3 3B",
-    "ministral-3:3b": "Ministral 3 3B",
-    "qwen3.5_4b": "Qwen 3.5 4B",
-    "qwen3.5:4b": "Qwen 3.5 4B",
+    "gemma3_1b": "Gemma-3-1B-IT",
+    "gemma3:1b": "Gemma-3-1B-IT",
+    "granite4.1_3b": "Granite-4.1-3B-Instruct",
+    "granite4.1:3b": "Granite-4.1-3B-Instruct",
+    "hf.co_bartowski_Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "ministral-3_3b": "Ministral-3-3B-Instruct",
+    "ministral-3:3b": "Ministral-3-3B-Instruct",
+    "qwen3.5_4b": "Qwen-3.5-4B-Instruct",
+    "qwen3.5:4b": "Qwen-3.5-4B-Instruct",
 }
 
 # Display names for judge models
 JUDGE_DISPLAY_NAMES = {
-    "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama 3.2 3B",
-    "gemma3:1b": "Gemma 3 1B",
-    "ministral-3:3b": "Ministral 3 3B",
-    "qwen3.5:2b": "Qwen 3.5 2B",
+    "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": "Llama-3.2-3B-Instruct",
+    "gemma3:1b": "Gemma-3-1B-IT",
+    "ministral-3:3b": "Ministral-3-3B-Instruct",
+    "qwen3.5:2b": "Qwen-3.5-2B-Instruct",
 }
 
 # Color palette tokens
@@ -396,7 +396,7 @@ def plot_reevaluation_model_comparison(df: pd.DataFrame, output_dir: Path):
             _place_pair_labels(ax, b1[0], r1_j, "{:.1f}", b2[0], r2_j, "{:.1f}", fontsize=9.5)
 
         ax.set_xticks(x_centers)
-        ax.set_xticklabels(present_models, fontsize=11, fontweight="bold")
+        ax.set_xticklabels(present_models, fontsize=10.5, fontweight="bold", rotation=15, ha="right")
         ax.set_ylabel("Average Judges Score (0–100)", fontsize=12, fontweight="bold")
         ax.set_ylim(0, 108)
         ax.set_yticks(np.arange(0, 101, 20))
@@ -415,7 +415,7 @@ def plot_reevaluation_model_comparison(df: pd.DataFrame, output_dir: Path):
         ax.legend(
             handles=legend_elements,
             loc="upper center",
-            bbox_to_anchor=(0.5, -0.14),
+            bbox_to_anchor=(0.5, -0.22),
             ncol=2,
             framealpha=0.95,
             fontsize=11,
@@ -450,7 +450,7 @@ def plot_reevaluation_model_comparison(df: pd.DataFrame, output_dir: Path):
             _place_pair_labels(ax, b1[0], r1_j, "{:.1f}", b2[0], r2_j, "{:.1f}", fontsize=9.0)
 
         ax.set_xticks(x_centers)
-        ax.set_xticklabels(present_models, fontsize=10.5, fontweight="bold")
+        ax.set_xticklabels(present_models, fontsize=10, fontweight="bold", rotation=15, ha="right")
         if i == 0:
             ax.set_ylabel("Average Judges Score (0–100)", fontsize=12, fontweight="bold")
         ax.set_ylim(0, 108)
@@ -466,7 +466,7 @@ def plot_reevaluation_model_comparison(df: pd.DataFrame, output_dir: Path):
         handles=legend_elements,
         loc="lower center",
         ncol=2,
-        bbox_to_anchor=(0.5, -0.04),
+        bbox_to_anchor=(0.5, -0.08),
         framealpha=0.95,
         fontsize=11,
     )
@@ -477,7 +477,7 @@ def plot_reevaluation_model_comparison(df: pd.DataFrame, output_dir: Path):
         y=0.98,
     )
 
-    plt.tight_layout(rect=[0, 0.05, 1, 0.94])
+    plt.tight_layout(rect=[0, 0.08, 1, 0.94])
     filepath = output_dir / "reevaluation_model_overview.png"
     plt.savefig(filepath, dpi=300, bbox_inches="tight")
     plt.close()
@@ -496,7 +496,7 @@ def plot_per_judge_reevaluation(df_judge: pd.DataFrame, output_dir: Path):
 
     fig, axes = plt.subplots(1, 2, figsize=(15, 6), dpi=300, sharey=True)
 
-    judge_order = ["Gemma 3 1B", "Llama 3.2 3B", "Ministral 3 3B", "Qwen 3.5 2B"]
+    judge_order = ["Gemma-3-1B-IT", "Llama-3.2-3B-Instruct", "Ministral-3-3B-Instruct", "Qwen-3.5-2B-Instruct"]
 
     for i, (task_key, task_title) in enumerate(tasks):
         ax = axes[i]
@@ -557,7 +557,7 @@ def plot_per_judge_reevaluation(df_judge: pd.DataFrame, output_dir: Path):
             )
 
         ax.set_xticks(x_indices)
-        ax.set_xticklabels(present_judges, fontsize=11, fontweight="bold")
+        ax.set_xticklabels(present_judges, fontsize=10.5, fontweight="bold", rotation=15, ha="right")
         if i == 0:
             ax.set_ylabel("Average Score (0–100)", fontsize=12, fontweight="bold")
         ax.set_ylim(0, 105)
@@ -571,7 +571,7 @@ def plot_per_judge_reevaluation(df_judge: pd.DataFrame, output_dir: Path):
         handles=legend_elements,
         loc="lower center",
         ncol=2,
-        bbox_to_anchor=(0.5, -0.04),
+        bbox_to_anchor=(0.5, -0.08),
         framealpha=0.95,
         fontsize=11,
     )
@@ -582,7 +582,7 @@ def plot_per_judge_reevaluation(df_judge: pd.DataFrame, output_dir: Path):
         y=0.98,
     )
 
-    plt.tight_layout(rect=[0, 0.04, 1, 0.94])
+    plt.tight_layout(rect=[0, 0.08, 1, 0.94])
     filepath = output_dir / "reevaluation_per_judge_comparison.png"
     plt.savefig(filepath, dpi=300, bbox_inches="tight")
     plt.close()
