@@ -466,7 +466,7 @@ def plot_coherence_accuracy():
         ('Judge 4', 'GPT-OSS-20B', 'GPT', PALETTE['GPT-OSS-20B']),
     ]
 
-    judges_plot_dir = os.path.join(ROOT_DIR, 'src', 'Plots', 'SavedPlots', 'Judges')
+    judges_plot_dir = os.path.join(ROOT_DIR, 'src', 'visualization', 'saved', 'Judges')
     individual_paths = []
 
     # Combined 2x2 figure

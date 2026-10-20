@@ -21,7 +21,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         pass
 
 DEFAULT_RESULTS_DIR = PROJECT_ROOT / "results" / "FinalJson_RERUN"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "ReEvaluation" / "Human_Comparison"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "visualization" / "saved" / "ReEvaluation" / "Human_Comparison"
 
 # Generator model order and display mapping
 CANONICAL_MODEL_ORDER = [

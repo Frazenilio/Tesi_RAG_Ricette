@@ -15,7 +15,7 @@ from src.judges.providers.models import Model, OR_NAME_API, GROQ_NAME_API
 
 DEFAULT_JUDGES_CSV = PROJECT_ROOT / "data" / "APICalls" / "API_Max100_judges.csv"
 DEFAULT_DATASET_CSV = PROJECT_ROOT / "data" / "judgement_dataset.csv"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "Judges"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "visualization" / "saved" / "Judges"
 
 # Visual styling tokens
 COLOR_HUMAN = "#27ae60"      # Emerald Green

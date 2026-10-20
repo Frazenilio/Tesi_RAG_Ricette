@@ -17,7 +17,7 @@ DEFAULT_DIRS = [
     PROJECT_ROOT / "results" / "2026-07-15T11-32-35_START_DS",
     PROJECT_ROOT / "results" / "2026-07-17T10-32-24",
 ]
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "RAG_Evaluation"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "visualization" / "saved" / "RAG_Evaluation"
 
 # Color Palette for Thesis Plots
 COLOR_IOU = "#2b5c8f"        # Deep Slate Blue (Jaccard Distance)

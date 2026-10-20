@@ -12,7 +12,7 @@ import seaborn as sns
 # Set paths relative to script location
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_RESULTS_DIR = PROJECT_ROOT / "results" / "bias_tests"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "Biases"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "visualization" / "saved" / "Biases"
 
 # Color Palette for Thesis Plots
 PALETTE_PRIMARY = ["#2b5c8f", "#d95f02", "#7570b3", "#1b9e77", "#e7298a", "#66a61e"]

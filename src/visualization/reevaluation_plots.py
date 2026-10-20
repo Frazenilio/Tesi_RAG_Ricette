@@ -23,7 +23,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 from src.core.metrics import compute_iou_stats
 
 DEFAULT_RESULTS_DIR = PROJECT_ROOT / "results" / "FinalJson_RERUN"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "Plots" / "SavedPlots" / "ReEvaluation"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "src" / "visualization" / "saved" / "ReEvaluation"
 
 # Target generator models in FinalJson
 ALLOWED_GENERATOR_FOLDERS = [
