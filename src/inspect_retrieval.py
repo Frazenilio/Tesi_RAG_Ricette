@@ -9,6 +9,7 @@ All tuneable parameters are at the top of this file for easy access.
 """
 
 import sys
+import re
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -25,6 +26,13 @@ from src.retrieval import build_faiss_index
 # ── Tuneable Parameters ─────────────────────────────────────────────────────
 # Which strategies to inspect (must match config.yaml naming).
 STRATEGIES = ["Singolo-Distinti", "Singolo-Aggregati", "Doppio"]
+
+# Display names mapping for plots and thesis documentation
+STRATEGY_DISPLAY_NAMES = {
+    "Singolo-Distinti": "Single-Distinct",
+    "Singolo-Aggregati": "Single-Aggregated",
+    "Doppio": "Double",
+}
 
 # Extra chunks to retrieve beyond the number of variants for a recipe.
 # Example: if a recipe has 6 variants and K_OFFSET = 2, then k = 8.
@@ -312,52 +320,134 @@ def main():
     print(f"\nReport saved to: {OUTPUT_PATH.absolute()}")
     
     # ── Plotting for Documentation ──
+    plot_data = []
+    for strategy, res_list in all_results.items():
+        for qr in res_list:
+            own_count = sum(1 for rc in qr.retrieved if rc.meta.recipe_name == qr.recipe_name)
+            # Recall: fraction of correct variants successfully retrieved
+            recall = min(own_count / qr.variant_count, 1.0)
+            plot_data.append({
+                "Strategy": strategy,
+                "Query Type": qr.query_type.capitalize(),
+                "Recall": recall * 100  # Convert to percentage
+            })
+            
+    plot_retrieval_metrics(plot_data=plot_data)
+
+
+def parse_retrieval_inspection(report_path: Path):
+    """Parses a pre-generated retrieval_inspection.md to extract plot data."""
+    if not report_path.exists():
+        return []
+
+    text = report_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    current_strategy = None
+    current_recipe = None
+    current_qtype = None
+    current_variants = 0
+    own_count = 0
+    in_table = False
+
+    plot_data = []
+
+    for line in lines:
+        strat_m = re.match(r"^## Strategy:\s*(.+)$", line)
+        if strat_m:
+            current_strategy = strat_m.group(1).strip()
+            continue
+
+        rec_m = re.match(r"^### (.+?)\s*—\s*(ingredients|directions)$", line)
+        if rec_m:
+            current_recipe = rec_m.group(1).strip()
+            current_qtype = rec_m.group(2).strip()
+            continue
+
+        k_m = re.search(r"\*\*k\*\*\s*=\s*\d+\s*\((\d+)\s*variants", line)
+        if k_m:
+            current_variants = int(k_m.group(1))
+            continue
+
+        if line.startswith("| # |"):
+            in_table = True
+            own_count = 0
+            continue
+
+        if in_table:
+            if line.startswith("|---|"):
+                continue
+            row_m = re.match(r"^\|\s*\d+\s*\|\s*\d+\s*\|\s*(.+?)\s*\|\s*(\w+)\s*\|", line)
+            if row_m:
+                ret_rec = row_m.group(1).strip()
+                if ret_rec == current_recipe:
+                    own_count += 1
+            else:
+                in_table = False
+                recall = min(own_count / current_variants, 1.0) if current_variants > 0 else 0.0
+                plot_data.append({
+                    "Strategy": current_strategy,
+                    "Query Type": current_qtype.capitalize(),
+                    "Recall": recall * 100,
+                })
+
+    return plot_data
+
+
+def plot_retrieval_metrics(plot_data=None, output_path=None):
+    """Generates the FAISS retrieval accuracy plot using the mapped display names."""
     try:
         import pandas as pd
         import matplotlib.pyplot as plt
         import seaborn as sns
-        
-        plot_data = []
-        for strategy, res_list in all_results.items():
-            for qr in res_list:
-                own_count = sum(1 for rc in qr.retrieved if rc.meta.recipe_name == qr.recipe_name)
-                # Recall: fraction of correct variants successfully retrieved
-                recall = min(own_count / qr.variant_count, 1.0)
-                plot_data.append({
-                    "Strategy": strategy,
-                    "Query Type": qr.query_type.capitalize(),
-                    "Recall": recall * 100  # Convert to percentage
-                })
-                
-        if plot_data:
-            df_plot = pd.DataFrame(plot_data)
-            plt.figure(figsize=(10, 6))
-            sns.set_theme(style="whitegrid")
-            
-            # Use barplot to show the average recall
-            sns.barplot(
-                x="Strategy", 
-                y="Recall", 
-                hue="Query Type", 
-                data=df_plot, 
-                palette="muted", 
-                errorbar=None  # Computes mean without error bars for cleaner look
-            )
-            
-            plt.title("FAISS Retrieval Accuracy (Average Recall)", fontsize=14, pad=15)
-            plt.ylabel("Average Recall (%)", fontsize=12)
-            plt.xlabel("Indexing Strategy", fontsize=12)
-            plt.ylim(0, 105)
-            plt.legend(title="Query Type")
-            plt.tight_layout()
-            
-            plot_path = Path("results") / "retrieval_metrics.png"
-            plt.savefig(plot_path, dpi=300)
-            print(f"Plot saved to: {plot_path.absolute()}")
-            
+
+        if output_path is None:
+            output_path = Path("results") / "retrieval_metrics.png"
+
+        if plot_data is None:
+            plot_data = parse_retrieval_inspection(OUTPUT_PATH)
+
+        if not plot_data:
+            print("No plot data available to generate retrieval metrics plot.")
+            return
+
+        df_plot = pd.DataFrame(plot_data)
+        # Apply display name mapping to match thesis terminology
+        df_plot["Strategy"] = df_plot["Strategy"].map(STRATEGY_DISPLAY_NAMES).fillna(df_plot["Strategy"])
+        strategy_order = [STRATEGY_DISPLAY_NAMES.get(s, s) for s in STRATEGIES]
+
+        plt.figure(figsize=(10, 6))
+        sns.set_theme(style="whitegrid")
+
+        # Barplot showing average recall per strategy and query type
+        sns.barplot(
+            x="Strategy",
+            y="Recall",
+            hue="Query Type",
+            data=df_plot,
+            order=strategy_order,
+            palette="muted",
+            errorbar=None,
+        )
+
+        plt.title("FAISS Retrieval Accuracy (Average Recall)", fontsize=14, pad=15)
+        plt.ylabel("Average Recall (%)", fontsize=12)
+        plt.xlabel("Indexing Strategy", fontsize=12)
+        plt.ylim(0, 105)
+        plt.legend(title="Query Type")
+        plt.tight_layout()
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path, dpi=300)
+        plt.close()
+        print(f"Plot saved to: {output_path.absolute()}")
+
     except ImportError:
         print("Pandas, Matplotlib, or Seaborn not installed. Skipping plot generation.")
 
 
 if __name__ == "__main__":
-    main()
+    if "--plot-only" in sys.argv:
+        plot_retrieval_metrics()
+    else:
+        main()
