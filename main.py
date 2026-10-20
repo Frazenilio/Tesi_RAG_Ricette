@@ -9,21 +9,21 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
-from src.config import load_config
-from src.data import (
+from src.core.config import load_config
+from src.core.data import (
     ExperimentGroup,
     build_grouped_by_size,
     build_grouped_by_size_controlled,
     load_data,
 )
-from src.experiments import (
+from src.core.experiments import (
     prepare_generation_cases,
     run_test_llm_only,
     run_test_rag,
     run_test_rag_vs_llm,
 )
-from src.generation import create_model_runtime
-from src.ollama_utils import check_ollama_server
+from src.core.generation import create_model_runtime
+from src.core.ollama_utils import check_ollama_server
 
 RESULTS_DIR = Path("results")
 

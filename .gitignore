@@ -9,3 +9,4 @@ Pipelines
 GroqKEY.txt
 OpenRouterKEY.txt
 labeler_exe
+*.md
